@@ -1,5 +1,5 @@
 ---
-description: Hypothesis-driven debug with forensics, failing test reproduction (TDD), 5-leaf review with silent wait, and physical-device validation.
+description: Hypothesis-driven debug with forensics, failing test reproduction (TDD), required-reviewer review with silent wait, and physical-device validation.
 ---
 
 # Debug an Android bug
@@ -15,6 +15,6 @@ Follow `.agents/rules/harness-rules.md` and `systematic-debugging`. Do not commi
 5. **Quality Review Gates**:
    - `python .agents/scripts/review_package.py`.
    - **Stage 0.5**: If tests were added/modified, audit with `test-quality-reviewer-agent` first until `TEST_PASS`.
-   - **Stage 1**: Dispatch all 5 review leaves in one invoke with **Silent Review Wait**.
+   - **Stage 1**: Follow required reviewer dispatch in review-delivery.md with **Silent Review Wait**.
 6. **Assemble & Verify**: `run_gradle_task.py <unit-test-task>` → `fast_kt_lint.py` → `run_gradle_task.py :app:assembleDebug` (same Shift-Left order as `harness-rules.md` Stage 1 step 0).
 7. **Physical Device Validation**: Structured phases on physical device. Walkthrough only after Pass.

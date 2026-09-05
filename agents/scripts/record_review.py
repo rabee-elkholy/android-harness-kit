@@ -71,6 +71,13 @@ def record_leaf_verdict(
         reviewed = report.get("reviewed_files")
         if not isinstance(reviewed, list) or not reviewed or not all(isinstance(f, str) and f in record.get("files", {}) for f in reviewed):
             return False
+        from _report_evidence import checks_valid
+        from _repo_files import REPO
+        if leaf_canonical not in PASS_TOKENS:
+            return False
+        if verdict != "FAIL" and not checks_valid(report, record, REPO):
+            live_print("[REFUSED] Scenario checks are blocked or lack current successful evidence", err=True)
+            return False
         if verdict not in (PASS_TOKENS[leaf_canonical], "FAIL"):
             return False
         leaves = record.setdefault("leaves", {})
@@ -78,7 +85,7 @@ def record_leaf_verdict(
                                   "attestation": "self_reported", "recorded_at": time.time()}
         record["findings"] = [f for leaf in leaves.values() for f in leaf.get("report", {}).get("findings", [])]
         required = required_keys(record)
-        all_passed = not record["findings"] and all(leaves.get(k, {}).get("token") == PASS_TOKENS[k] for k in required)
+        all_passed = not record["findings"] and all(leaves.get(k, {}).get("token") == PASS_TOKENS[k] and checks_valid(leaves[k].get("report", {}), record, REPO) for k in required)
         record["verdict"] = "APPROVED" if all_passed else "PENDING"
         record["completed_at"] = time.time() if all_passed else None
         return write_verdict_record(pkg12, record)

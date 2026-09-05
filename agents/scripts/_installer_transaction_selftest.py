@@ -30,6 +30,21 @@ class TransactionTest(unittest.TestCase):
                 installer.place_engine(self.repo, self.kit, {})
         self.assertEqual('old', (self.repo / '.agents/VERSION').read_text())
 
+    def test_update_preserves_policy_and_adds_new_reference(self):
+        policy = '{"version":1,"require":["ui_expert"]}'
+        (self.repo / '.agents/review-policy.json').write_text(policy)
+        (self.kit / 'agents/skills/android-harness/references/new-guide.md').write_text('new guide')
+        installer.place_engine(self.repo, self.kit, {'custom.md': 'tailored'})
+        self.assertEqual(policy, (self.repo / '.agents/review-policy.json').read_text())
+        self.assertEqual('new guide', (self.repo / '.agents/skills/android-harness/references/new-guide.md').read_text())
+        self.assertEqual('tailored', (self.repo / '.agents/skills/android-harness/references/custom.md').read_text())
+
+    def test_invalid_policy_aborts_without_replacing_engine(self):
+        (self.repo / '.agents/review-policy.json').write_text('{"version":1,"exclude":["test_quality"]}')
+        with self.assertRaises(ValueError):
+            installer.place_engine(self.repo, self.kit, {})
+        self.assertEqual('old', (self.repo / '.agents/VERSION').read_text())
+
     def test_success_preserves_baseline_not_old_gate_results(self):
         installer.place_engine(self.repo, self.kit, {'custom.md': 'my conventions'})
         self.assertEqual('new', (self.repo / '.agents/VERSION').read_text())

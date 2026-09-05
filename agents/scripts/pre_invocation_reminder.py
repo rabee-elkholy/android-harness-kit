@@ -72,7 +72,7 @@ def message_for(used_reviews: int, pending: bool, update_directive: str = "", ro
     bits = _policy_bits()
     expired_note = latest_expired_note()
     pending_note = (
-        " [SILENCE MANDATE]: A 5-leaf review round is in flight. If some reviewers are still running, OUTPUT EXACTLY EMPTY STRING ('') AND DO NOT CALL TOOLS. Never output 'Waiting for...', 'Reviewers completing...', or 'Running tests...'. Do not assembleDebug until all 5 reply."
+        " [SILENCE MANDATE]: A required-reviewer round is in flight. If some reviewers are still running, Avoid progress chatter; record completed batch reports and dispatch the remaining batch when ready. Never output 'Waiting for...', 'Reviewers completing...', or 'Running tests...'. Do not assembleDebug until every required reviewer replies."
         if pending
         else ""
     )
@@ -99,7 +99,7 @@ def message_for(used_reviews: int, pending: bool, update_directive: str = "", ro
         f"Harness Quality Guard: review rounds used {used_reviews}/{MAX_REVIEWS}.{pending_note}{expired_note}{cap_note}{update_directive} "
         "ACTIVE PIPELINE REMINDER: "
         f"1. Pre-gate: `{bits['unit_test_task']}` + `fast_kt_lint.py` before review. "
-        "2. Review: Run `review_package.py`. Follow REQUIRED_REVIEWERS: production/test changes require TEST_PASS; detected UI changes require UI_PASS. "
+        "2. Review: Follow `.agents/workflows/review-delivery.md` for disjoint batches and recording. Run `review_package.py`. Follow REQUIRED_REVIEWERS: production/test changes require TEST_PASS; detected UI changes require UI_PASS. "
         "Include the five base reviewers: "
         "bug-reviewer-agent, convention-reviewer-agent, security-reviewer-agent, perf-anr-guardian-agent, regression-impact-reviewer-agent. "
         "Do not use code-review-guard-agent. Zero chat noise on intermediate reviews; ZERO-TIMER INVARIANT: never use schedule or polling timers for subagents. "

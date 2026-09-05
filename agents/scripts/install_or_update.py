@@ -233,9 +233,7 @@ def _populate_engine(repo: Path, kit: Path, preserved_refs: dict[str, str], dest
     dest_ref_dir = dest / "skills" / "android-harness" / "references"
     dest_ref_dir.mkdir(parents=True, exist_ok=True)
     if preserved_refs:
-        # Remove kit default placeholder references
-        for p in dest_ref_dir.glob("*.md"):
-            p.unlink(missing_ok=True)
+        # Overlay tailored references without deleting newly shipped guidance.
         for name, content in preserved_refs.items():
             (dest_ref_dir / name).write_text(content, encoding="utf-8")
 
@@ -258,6 +256,11 @@ def place_engine(repo: Path, kit: Path, preserved_refs: dict[str, str]) -> None:
         baseline = dest / "state" / "baseline.json"
         if baseline.is_file():
             shutil.copy2(baseline, staging / "state" / "baseline.json")
+        policy = dest / "review-policy.json"
+        if policy.exists() or policy.is_symlink():
+            from _review_policy import additions
+            additions(repo, [])  # Validate before the old engine is moved.
+            shutil.copy2(policy, staging / "review-policy.json")
         atomic_json(journal, {"staging": str(staging), "previous": str(previous), "phase": "prepared"})
         if dest.exists():
             dest.rename(previous)

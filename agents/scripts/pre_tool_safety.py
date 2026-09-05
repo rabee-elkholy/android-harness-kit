@@ -382,7 +382,9 @@ def handle_invoke_subagent(payload: dict, args: dict) -> None:
     review_names = names & REVIEW_FIVE
     solo_perf = review_names == {"perf-anr-guardian-agent"} and names == {"perf-anr-guardian-agent"}
 
-    if review_names and not solo_perf:
+    packaged_specialist = any(PACKAGE_RE.search(str(sub.get("Prompt") or sub.get("prompt") or ""))
+                               for sub, name, _ in identified if name in {"test-quality-reviewer-agent", "android-ui-expert-agent", "perf-anr-guardian-agent"})
+    if (review_names and not solo_perf) or packaged_specialist:
         package_paths: list[Path] = []
         for sub, _name, _kind in identified:
             if _name not in (REVIEW_FIVE | {"test-quality-reviewer-agent", "android-ui-expert-agent"}):
@@ -401,6 +403,28 @@ def handle_invoke_subagent(payload: dict, args: dict) -> None:
         keys = _required_review_keys(digest[:12], str(pkg))
         required_leaves = {next(alias for alias in LEAF_ALIASES[key] if alias.endswith("-agent")) for key in keys}
         missing = required_leaves - names
+        record = read_verdict_record(digest[:12]) or {}
+        if record.get("schema_version") == 3 and (missing or record.get("review_execution") == "structured_batches"):
+            from _review_batches import register_batch
+            if names - required_leaves:
+                deny("Denied: a delivery batch must contain only required reviewers.")
+                return
+            if not record.get("review_batches") and invoke_count(conv, "review") >= MAX_REVIEWS:
+                deny("Denied: review round cap reached.")
+                return
+            if reviews_pending(conv) and active_package_hash(conv)[:12] != digest[:12]:
+                deny("Denied: finish the active package before starting another batch.")
+                return
+            canonical = {alias: key for key, aliases in LEAF_ALIASES.items() for alias in aliases}
+            try:
+                first = register_batch(digest[:12], [canonical[name] for name in sorted(names) if name in canonical], conv)
+            except (ValueError, RuntimeError) as exc:
+                deny("Denied: " + str(exc))
+                return
+            if first:
+                record_review_round(conv, digest)
+            allow("Review batch accepted; record each structured --report. Delivery waits for every required reviewer.")
+            return
         if missing:
             deny("Denied: dispatch every REQUIRED_REVIEWERS entry against the same package "
                  f"in one native invoke (missing: {', '.join(sorted(missing))}).")
@@ -692,6 +716,21 @@ def check_subagents_barrier(conv_id: str, payload: dict | None = None) -> tuple[
             f"Pending review round expired after {int(barrier_ttl)}s barrier TTL. "
             f"Re-run the {expected_leaves} review leaves if the code changed."
         )
+
+    record = read_verdict_record(active_pkg12) or {}
+    if record.get("review_execution") == "structured_batches":
+        from _review_contract import package_valid
+        from _report_evidence import checks_valid
+        from _repo_files import REPO as evidence_repo
+        leaves = record.get("leaves", {})
+        complete = package_valid(record) and record.get("verdict") == "APPROVED" and not record.get("findings") and all(
+            leaves.get(key, {}).get("token") == LEAF_PASS_VALUES[key]
+            and bool(leaves.get(key, {}).get("report"))
+            and checks_valid(leaves[key]["report"], record, evidence_repo) for key in keys)
+        if complete:
+            clear_pending_reviews(conv_id)
+            return True, "All required batch reports are current and approved"
+        return False, "Review batches need every current structured report; transcript PASS tokens cannot complete batches"
 
     log_file = resolve_transcript_path(conv_id, payload)
     if log_file is None or not log_file.is_file():

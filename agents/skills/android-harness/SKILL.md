@@ -30,3 +30,12 @@ Zoho Sprints (when enabled): `.agents/workflows/zoho-sprints.md`. Mutate only on
 - [**Compose Inspector**](../compose-inspector/SKILL.md)
 - [**Gradle Build Optimizer**](../gradle-build-optimizer/SKILL.md)
 - [**Git PR Automator**](../git-pr-automator/SKILL.md): commit **message** format only
+
+## Focused verification procedures
+
+- State/navigation/lifecycle changes: [state recovery](../android-state-recovery/SKILL.md).
+- Gradle, dependency, shrinking or release changes: [release verification](../android-release-verification/SKILL.md).
+- Shared source sets or platform interop changes: [KMP boundaries](../kmp-boundary-verification/SKILL.md).
+
+Load only the procedure relevant to the changed contract. Follow the canonical
+`workflows/review-delivery.md` under the agents folder for batches and evidence.

@@ -47,10 +47,14 @@ source containing Compose/View signals in either HEAD or the working tree.
 Deleted files and removed annotations therefore still activate review.
 
 Routing is conservative and heuristic: comments can activate it, and indirect UI
-wrappers, generated code and unusual frameworks can evade detection. The lead must
-add a specialist when the semantic impact requires it. QA diagnostics remains
-on-demand. Use one dispatch when capacity permits; otherwise use bounded batches
-against the same package and collect every required report before proceeding.
+wrappers or generated code can evade detection. Add a snapshot-bound path rule in
+`.agents/review-policy.json` for shared UI wrappers; policy can add reviewers only.
+Cosmetic candidates are advisory and cannot suppress review or tests.
+
+Use `.agents/workflows/review-delivery.md` for bounded native batches and artifact
+checks. That workflow is the single execution reference. QA diagnostics remains
+on-demand. Procedure skills cover state recovery, release variants and KMP targets;
+load only relevant procedures and report unexecuted scenarios explicitly.
 
 ## Official reference starting points
 

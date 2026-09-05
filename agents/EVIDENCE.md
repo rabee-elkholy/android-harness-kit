@@ -126,3 +126,19 @@ even without test edits. Detected UI changes require android-ui-expert-agent /
 ui_expert with UI_PASS, recorded with the same structured report contract.
 See the Android competency matrix for semantic scenarios; these remain explicit
 review obligations, not automated proof of runtime coverage.
+
+## Optional scenario evidence and review batches
+
+Reports may include `checks`: each entry has a unique `scenario` and `status`.
+VERIFIED requires `artifact: {"path": "<relative gate JSON>", "sha256": "<full digest>"}`.
+The artifact must be inside the checkout, current for snapshot/task/engine, and
+have status PASS with exit_code 0. NOT_APPLICABLE requires a nonempty reason;
+BLOCKED cannot be recorded as PASS. Final verdict revalidates referenced bytes.
+Artifact presence and success do not establish semantic relevance: the reviewer
+must explain why it proves the scenario. Reports without checks remain self-reported.
+
+Current native packages support disjoint batches in one conversation. Every batch
+uses the same package; only the first counts as a round. Reports survive subsequent
+batches. Duplicate reviewers, mixed packages and stale inputs are rejected. Batched
+completion requires structured reports for all required roles, independent of
+transcript completion. See workflows/review-delivery.md for the canonical procedure.

@@ -161,6 +161,7 @@ def _review_outcome(tree_fp: str | None) -> tuple[dict, dict, str, bool]:
         check["status"] = "FAIL"
         check["detail"] = "review round EXPIRED via the barrier TTL; re-dispatch the 5 leaves"
         return check, leaves_map, stale, expired
+    from _report_evidence import checks_valid
     raw_leaves = record.get("leaves") or {}
     active_keys = required_keys(record)
 
@@ -177,10 +178,11 @@ def _review_outcome(tree_fp: str | None) -> tuple[dict, dict, str, bool]:
     elif record.get("findings") or any(
         not isinstance(raw_leaves.get(alias), dict)
         or not raw_leaves[alias].get("report")
+        or not checks_valid(raw_leaves[alias]["report"], record, REPO)
         for key in active_keys for alias in [next((a for a in LEAF_ALIASES[key] if a in raw_leaves), key)]
     ):
         check["status"] = "FAIL"
-        check["detail"] = "unresolved findings or missing reviewer reports"
+        check["detail"] = "unresolved findings, missing reports or invalid scenario evidence"
     elif missing:
         check["status"] = "FAIL"
         check["detail"] = "missing leaf verdicts: " + ", ".join(missing)

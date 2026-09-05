@@ -17,23 +17,10 @@ Every subagent must use `model="inherit"`. Never pin `flash`/`pro` to a differen
 
 ## Android reviewer routing and competency contract
 
-For installed Android clients, read the applicable rows of
-`skills/android-harness/references/android-competency-matrix.md` under the agents
-folder before implementation. Preserve project-specific architecture and locales.
-Record applicable scenarios, observed evidence and unverified limitations.
-
-The package's `REQUIRED_REVIEWERS` replaces fixed five/six counts in older examples.
-Five base reviewers remain required; production/build/resource changes also require
-`test_quality` (`TEST_PASS`), and detected UI changes require `ui_expert` (`UI_PASS`).
-The recorder, final verdict and native invocation hook enforce the same routing.
-Native invoke supports up to seven reviewers in one call. If the host cannot run
-that many, use its supported review execution with per-leaf structured recording;
-all reports must refer to the same package. Never label serial self-review independent.
-QA diagnostics is on-demand; add specialists when semantic impact exceeds detection.
-
-No fixed assertion quota, mandatory stability annotation, universal Arabic locale,
-or FPS guarantee establishes quality. Concrete contracts and evidence govern findings.
-This section takes precedence over older fixed-count and generic quality examples.
+Follow `agents/workflows/review-delivery.md` in the kit or
+`.agents/workflows/review-delivery.md` in an installed client. It is the canonical
+execution contract for dynamic reviewers, bounded batches and scenario evidence.
+Read only applicable rows of the Android competency matrix before implementation.
 
 ## Current delivery evidence contract
 
@@ -53,7 +40,7 @@ over older command examples below. Regenerate evidence after changing inputs.
   - The Lead Agent **MUST NEVER output mechanical status spam** in chat (e.g., do NOT output "reading file...", "running tests...", "waiting 5 seconds...", or "waiting for review reports...").
   - **Strict Zero-Timer & No-Sleep Invariant**: The Lead Agent MUST NEVER invoke the `schedule` tool, run `sleep` commands in shell, or poll `manage_task status` in a loop while waiting for subagents. Rely 100% on the system's reactive wakeup.
   - **Silent Intermediate Review Wait Protocol**: When review subagents are dispatched via `invoke_subagent`, they complete asynchronously. On each intermediate subagent arrival where remaining reviewers in that round are still executing, the Lead Agent **MUST REMAIN 100% SILENT** in chat, make no tool calls, and end its turn immediately. NEVER emit intermediate countdown spam (e.g., do NOT say "Waiting for 4 reviewers...").
-  - **Review Round Summary Card on Findings**: When all 5 review verdicts for Round N arrive in context and BLOCKER/MAJOR findings exist, the Lead Agent **MUST output a concise Review Round Summary Card in chat** detailing the findings by reviewer, the corrective actions taken, and the initiation of Round N+1. This ensures 100% visibility, eliminates false perceptions of silent loops, and proves the active quality gate.
+  - **Review Round Summary Card on Findings**: When all required review verdicts for Round N arrive in context and BLOCKER/MAJOR findings exist, the Lead Agent **MUST output a concise Review Round Summary Card in chat** detailing the findings by reviewer, the corrective actions taken, and the initiation of Round N+1. This ensures 100% visibility, eliminates false perceptions of silent loops, and proves the active quality gate.
   - The Lead Agent speaks in chat ONLY at high-value, actionable moments:
     1. **Plan Proposal**: Presenting `implementation_plan.md` for developer feedback and approval.
     2. **Review Round Summary Card (on Findings)**: Summarizing round findings and corrective fixes before launching Round N+1.
@@ -92,7 +79,7 @@ over older command examples below. Regenerate evidence after changing inputs.
   - When fetching issue details fails after at most 1 fallback (e.g. backlog lookup):
     The Lead Agent **MUST FAIL FAST in 0 seconds**.
     **STRICTLY FORBIDDEN**: The agent must NEVER search the developer's host PC or home directories (`C:\Users\...`, `/home/...`), never search Google for vendor APIs, never scrape external documentation, and never author custom scratch reverse-engineering scripts. Fallback 100% to the developer's prompt description and ask clarifying questions directly in chat if needed.
-- **Quality over tokens**: Uncompromising code quality always wins. Never skip, serialize, or drop the 5 review leaves to save tokens.
+- **Quality over tokens**: Uncompromising code quality always wins. Never omit a required reviewer to save tokens. Use bounded batches when host capacity requires them.
 - **Bugs**: Trace data to the producer. No empty `try-catch`, no swallowing `CancellationException`, no dummy business fallbacks (`null` / `0` as fake success). Framework recovery (for example DataStore `emit(emptyPreferences())` on a corrupt file) is not a dummy business fallback.
 - **Colors**: Use this app's theme tokens (or `MaterialTheme`). Prefer `MaterialTheme.colorScheme` / `MaterialTheme.typography`. `colorResource(R.color…)` is allowed when matching existing XML colors. No raw hex and no hardcoded fonts.
 - **Context**: Subagents may read callers, contracts, entities, and lifecycle hosts.
@@ -145,7 +132,7 @@ Harness scripts classify every non-zero exit into CODE (the diff is wrong) or EN
   * **`LOW`**: Documentation, strings/translations (`strings.xml`), UI layout dimensions/drawables, comments-only diffs.
 - **Fail-safe floor**: High-risk surfaces have a file-level floor (e.g. comments in a billing file remain `CRITICAL`).
 - **Human approval required**: `HIGH` and `CRITICAL` risk tiers require interactive developer confirmation (`python .agents/scripts/approve_risk.py`). The AI agent cannot approve risk on its own (`stdin=DEVNULL` refusal). `preflight_check.py` fails if approval is missing or stale.
-- **Review package header**: `review_package.py` includes `RISK_TIER=` in the header so all five reviewers inspect the risk tier.
+- **Review package header**: `review_package.py` includes `RISK_TIER=` in the header so all required reviewers inspect the risk tier.
 
 ---
 
@@ -160,7 +147,7 @@ Harness scripts classify every non-zero exit into CODE (the diff is wrong) or EN
 
 The Lead Agent implements, runs Gradle, and talks to the developer.
 
-### Delivery review leaves (mandatory, parallel, single invoke)
+### Delivery review roles (required roster with bounded batches)
 
 1. `bug-reviewer-agent` → `BUG_PASS` or BLOCKER/MAJOR
 2. `convention-reviewer-agent` → `CONVENTION_PASS` or BLOCKER/MAJOR with a cited rule
@@ -170,7 +157,7 @@ The Lead Agent implements, runs Gradle, and talks to the developer.
 
 `code-review-guard-agent` is **retired** as the delivery gate. Do not define or invoke it. Do not wait for `LGTM`.
 
-### On-demand specialists (not a substitute for the 5)
+### Specialist reviewers (promotion follows the package)
 
 - `qa-diagnostics-agent` — logcat / crash / ANR forensics on a physical device
 - `android-ui-expert-agent` — Compose **and** legacy XML. Never convert XML to Compose during a bugfix unless asked.
@@ -195,7 +182,7 @@ The Lead Agent implements, runs Gradle, and talks to the developer.
 - **MILESTONE EXECUTION STRATEGY (ATOMIC PER-PHASE LIFECYCLE)**: For multi-phase plans (>3–4 files, or data + domain + UI layers), execute strictly phase-by-phase:
   - **MANDATORY PHASE HARD BARRIER (NO UNILATERAL PHASE-JUMPING)**:
     - **EVERY SINGLE PHASE is an atomic, self-contained lifecycle**:
-      `Phase Implementation & TDD -> Stage 0.5 Pre-Review Test Gate -> Stage 1 Parallel 5-Leaf Review Gate -> Targeted Unit Tests & Build (:assembleDebug) -> Physical Device Smoke Test -> Developer Sign-off -> Phase Milestone Card -> STOP & Wait for Developer Authorization`.
+      `Phase Implementation & TDD -> Stage 0.5 Pre-Review Test Gate -> Stage 1 Parallel Required Review Gate -> Targeted Unit Tests & Build (:assembleDebug) -> Physical Device Smoke Test -> Developer Sign-off -> Phase Milestone Card -> STOP & Wait for Developer Authorization`.
     - **STRICT PROHIBITION**: The Lead Agent is **STRICTLY FORBIDDEN from creating, editing, modifying, or planning ANY files belonging to Phase N+1** until Phase N has received explicit developer sign-off in chat.
     - **Device Smoke Testing Across All Phases**: Even for data/repository/domain refactoring phases, running the app on device (`run_device.py install-start`) to verify the app launches cleanly and existing screens do not crash on navigation is required whenever a physical device is connected.
     - **NEVER create a separate "Review Phase" at the end of the plan**. Diffs must stay small (<3-4 files per review round) to prevent massive end-of-project review loops.
@@ -208,14 +195,14 @@ The Lead Agent implements, runs Gradle, and talks to the developer.
   ### [ROUND N SUMMARY]: Findings Resolved & Re-dispatching
   * [BUG]: Finding summary with `File.kt:Line` -> Fix explanation.
   * [CONVENTION / QUALITY]: Finding summary with `File.kt:Line` -> Fix explanation.
-  [STATUS]: Re-running 5-leaf review round N+1 for verified changes.
+  [STATUS]: Re-running required-reviewer review round N+1 for verified changes.
   ```
 
   **2. Phase Milestone Progress Card (Phase N Complete)**:
   ```markdown
   ### [Phase N/Total]: [Phase Name]
   * **Scope**: [Brief 1-line description]
-  * **5-Leaf Review Gate**: `BUG_PASS` | `CONVENTION_PASS` | `SECURITY_PASS` | `PERF_PASS` | `REGRESSION_PASS`
+  * **Required Review Gate**: `BUG_PASS` | `CONVENTION_PASS` | `SECURITY_PASS` | `PERF_PASS` | `REGRESSION_PASS`
   * **Unit Tests & Build**: `X Passed` (:module:testDebugUnitTest) + `BUILD SUCCESSFUL`
   * **Device Verification**: `PASS` (tested on device)
   * **Transition**: Awaiting developer commit before starting Phase N+1.
@@ -288,7 +275,7 @@ Skip the **5 review leaves** only when the working tree is strictly:
 
 This skip is not a token optimization. Code changes never skip reviews.
 
-### Stage 1: One tool call, parallel leaves (with Smart Test Promotion & Silent Wait)
+### Stage 1: Required reviewers using the canonical batch protocol
 
 From repo root:
 
@@ -306,9 +293,9 @@ From repo root:
    - The IDE interface natively displays live progress cards and spinners for each subagent.
    - Output a single, consolidated, professional summary in chat **ONLY when all subagents have finished and all verdicts are in context**.
 4. Collect verdicts. BLOCKER/MAJOR → output Review Round Summary Card in chat -> fix at the producer -> verify with `fast_kt_lint.py` -> regenerate the package -> dispatch the same leaves again. Identical package content is rejected; the diff must change.
-5. Advance only when all required leaves return their PASS tokens: `BUG_PASS`, `CONVENTION_PASS`, `SECURITY_PASS`, `PERF_PASS`, `REGRESSION_PASS` (+ `TEST_PASS` when test files are touched).
+5. Advance only when all required leaves return their PASS tokens: `BUG_PASS`, `CONVENTION_PASS`, `SECURITY_PASS`, `PERF_PASS`, `REGRESSION_PASS` (+ `TEST_PASS` and `UI_PASS` as required by the package).
 
-Never fire separate `invoke_subagent` calls. That burns the round counter and is denied.
+Use disjoint batches as defined in `workflows/review-delivery.md` when capacity is limited.
 
 QA diagnostics remains on-demand; UI review follows the package routing.
 
@@ -316,7 +303,7 @@ QA diagnostics remains on-demand; UI review follows the package routing.
 
 - **Google Antigravity Superpowers**:
   * **Self-Healing Commands**: `PreToolUse` hook automatically rewrites raw gradlew commands (`./gradlew ...`, `gradlew.bat ...`) to `python .agents/scripts/run_gradle_task.py ...` via argument `overwrite`.
-  * **Delivery Stop Guard**: Stop lifecycle hook (`delivery-stop-guard`) physically blocks session termination if unreviewed code changes exist without a 5-leaf pass, with an automatic Loop Breaker (yielding after 2 unchanged blocks).
+  * **Delivery Stop Guard**: Stop lifecycle hook (`delivery-stop-guard`) physically blocks session termination if unreviewed code changes exist without a required-reviewer pass, with an automatic Loop Breaker (yielding after 2 unchanged blocks).
   * **Generative UI Widgets**: Rich Tailwind CSS cards (`<agent-embed>`) for review summaries and architecture visualization via `render_ui.py`.
   * **Interactive Modals (`ask_question`)**: Proactively use structured interactive modals for missing-scenario interviews and device testing sign-offs.
   * **Proactive Slash Commands**: Recommend `/grill-me` for design and edge-case alignment and `/goal` for comprehensive execution.
@@ -332,18 +319,18 @@ QA diagnostics remains on-demand; UI review follows the package routing.
 
 ## 3) Preflight Gate, Build, Install, Launch
 
-Only after the 5 leaves have finished (all 5 PASS):
+Only after the required reviewers have finished (all required PASS):
 
 1. `python .agents/scripts/preflight_check.py` — **Mandatory Preflight Quality Gate** (verifies string parity, Room migrations, and fast Kotlin lint).
    - **STRICT PREFLIGHT INVARIANT**: If `preflight_check.py` returns exit code 1 (`[FAIL]`), the agent is **STRICTLY PROHIBITED from running `:app:assembleDebug` or delivering**. The agent MUST fix all string/lint/Room issues or halt and report them to the developer.
 2. `python .agents/scripts/run_gradle_task.py :app:assembleDebug`. Wait for `BUILD SUCCESSFUL` from **this** command. Daily work is **debug**. Do not install a leftover APK. Do **not** run raw `gradlew.bat` from the agent — the Python runner streams executing tasks and a 10s heartbeat so the task log is not empty during compile.
 3. Live Device Install & Launch: `python .agents/scripts/run_device.py install-start`.
    - **APK Freshness & Stale Build Barrier**: `run_device.py` automatically verifies that the target APK is strictly newer than all repository code/resource files and build configurations via `_apk_freshness.py`. If source files were touched after the APK was built or if git HEAD moved past the last assemble gate, installation is **immediately rejected with exit code 1**, forcing a fresh `:app:assembleDebug` compile before any bytecode reaches the device.
-4. **Final Verdict Artifact**: after every gate (unit tests, preflight, assemble, device, 5 leaves), run `python .agents/scripts/final_verdict.py`. It aggregates the per-gate result artifacts (`.agents/state/results/*.json`) and the review verdict records into `.agents/state/last_verdict.json`:
-   - `APPROVED` — every gate PASS and the 5-leaf verdict is APPROVED for the same tree fingerprint; required before delivery.
+4. **Final Verdict Artifact**: after every gate (unit tests, preflight, assemble, device, required reviewers), run `python .agents/scripts/final_verdict.py`. It aggregates the per-gate result artifacts (`.agents/state/results/*.json`) and the review verdict records into `.agents/state/last_verdict.json`:
+   - `APPROVED` — every gate PASS and the required-reviewer verdict is APPROVED for the same tree fingerprint; required before delivery.
    - `ENV_BLOCKED` — a gate failed environmentally; exit 30 halt protocol (never edit code to bypass).
-   - `STALE` — code changed after the review package was generated; regenerate the package and re-run the 5 leaves.
-   - `EXPIRED` — the review round expired via the barrier TTL; re-dispatch the 5 leaves.
+   - `STALE` — code changed after the review package was generated; regenerate the package and re-run the required reviewers.
+   - `EXPIRED` — the review round expired via the barrier TTL; re-dispatch the required reviewers.
    - `BLOCKED` — a required gate FAIL/MISSING, an artifact predates the current HEAD, or the checkout has no git HEAD.
    - CI must re-run the gates itself and never trust the local artifact file.
 
@@ -385,7 +372,7 @@ Helpers: `python .agents/scripts/capture_screen.py` and `python .agents/scripts/
 
 - **Phase Milestone Card Requirements**:
   1. Scope & Changes.
-  2. Quality Gates (`5-Leaf Review Gate`, `Unit Tests`, `preflight_check.py` PASS, `:assembleDebug` BUILD SUCCESSFUL).
+  2. Quality Gates (`Required Review Gate`, `Unit Tests`, `preflight_check.py` PASS, `:assembleDebug` BUILD SUCCESSFUL).
   3. Device Verification Evidence (Interactive manual checklist PASS).
   4. Drafted Conventional Commit message for Phase N.
   5. Clear message that the agent is waiting for developer commit before beginning Phase N+1.
@@ -445,19 +432,19 @@ To preserve a clean, professional, and readable IDE chat interface, the agent mu
    - The agent MUST NOT narrate routine tool executions in permanent chat prose (e.g. NEVER write *"Running all unit tests to ensure complete stability..."*, *"Cleaning stale kapt cache..."*, *"Re-running tests with fresh task execution..."*, *"Reading file..."*).
 
 2. **Silent Intermediate Review Wait (Zero Chat Noise)**:
-   - When a 5-leaf review round or background tasks are in-flight, the agent receives intermediate reactive notifications as individual subagents finish.
-   - On EVERY intermediate wakeup where not all 5 verdicts are present, the agent **MUST OUTPUT AN EMPTY STRING (`""`) AND CALL NO TOOLS**, ending the turn instantly and silently.
+   - When a required-reviewer review round or background tasks are in-flight, the agent receives intermediate reactive notifications as individual subagents finish.
+   - On EVERY intermediate wakeup where not all required verdicts are present, the agent **MUST OUTPUT AN EMPTY STRING (`""`) AND CALL NO TOOLS**, ending the turn instantly and silently.
    - NEVER output status countdowns or waiting narrations (e.g. NEVER write *"Waiting for Bug Reviewer to finalize its verdict..."*, *"Reviewers are completing their final evaluations..."*, *"Waiting for remaining reviewers to complete their evaluations..."*).
 
 3. **The 4 Permitted Conversational Touchpoints**:
    Permanent chat prose is reserved strictly for high-signal engineering milestones:
    - **Touchpoint 1: Plan Presentation & Approval**: `implementation_plan.md` artifact presentation before starting non-trivial work.
-   - **Touchpoint 2: Review Round Summary Card**: EXACTLY ONE structured card emitted when all 5 (or 6) reviewers finish (detailing findings and corrective fixes on findings, or listing the clean PASS verdicts when all reviewers clear the diff).
+   - **Touchpoint 2: Review Round Summary Card**: EXACTLY ONE structured card emitted when all required reviewers finish (detailing findings and corrective fixes on findings, or listing the clean PASS verdicts when all reviewers clear the diff).
    - **Touchpoint 3: Phase Milestone Card**: Verification evidence, automated E2E results, and phase progression cards upon completing a milestone.
    - **Touchpoint 4: Final Task Delivery**: Final walkthrough summary, verification evidence, and Conventional Commit draft.
 
 4. **Review Churn & Fast Convergence**:
-   - When addressing review findings, the agent must fix all findings across all 5 pillars comprehensively in a single pass.
+   - When addressing review findings, the agent must fix all findings across all required pillars comprehensively in a single pass.
    - Empirically verify with `testDebugUnitTest` and `fast_kt_lint.py` before re-dispatching.
    - Review rounds MUST converge in at most 3 rounds. High round churn (e.g. Round 5, Round 6, Round 7) is strictly prohibited.
    - **Round tracking is programmatic**: `review_package.py` records every generated package as a round for the task (task id from `--task` / `HARNESS_TASK_ID`, ledger in `.agents/state/review_rounds.json`; counters reset when HEAD moves after the developer commits). At the round cap (3, override `HARNESS_MAX_REVIEW_ROUNDS`), package generation prints a `REVIEW ROUND CAP` warning and the reminder injects an escalation note — the agent MUST present a Review Round Summary Card and ask the developer to choose: continue one more round / roll back the last fixes / stop the task. Never silently loop.
@@ -489,3 +476,5 @@ To preserve a clean, professional, and readable IDE chat interface, the agent mu
 - `gradle-build-optimizer` — daemon, build cache & speed optimization
 - `git-pr-automator` — commit **message** format only
 - Zoho Sprints playbook: `.agents/workflows/zoho-sprints.md` (mutate only on `update zoho`)
+
+For batched reviews, record completed reports and dispatch the next batch as required by the canonical workflow; silence rules do not prohibit these necessary actions.
