@@ -5,6 +5,16 @@ All notable changes to the **Android Agent Harness** will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+- Bind delivery evidence to content, checkout, task and run identity; invalidate stale and legacy results.
+- Unify CLI delivery verification with the final verdict and require structured reviewer reports.
+- Parse current task reports after assertion failures, preserving baseline debt without hiding build failures.
+- Separate installation, launch, smoke scenarios and developer sign-off with exact APK binding.
+- Reduce Room comment-only false positives and require exported schema coverage for persisted changes.
+- Stage engine updates, recover interrupted swaps and preserve baselines; validate distributions before publication.
+
+
 ## [0.27.12] - 2026-09-05
 
 ### Environment-Adaptive Architecture, Self-Healing Commands & Zero-Bloat Preference Codification

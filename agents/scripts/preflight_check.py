@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gate_results import current_head_sha, write_gate_result  # noqa: E402
+from _gate_results import current_head_sha, write_gate_result, GateRun  # noqa: E402
 from _live_process import enable_line_buffered_stdio, live_print, run_streaming  # noqa: E402
 from _repo_files import REPO, changed_paths, ensure_local_git_privacy  # noqa: E402
 from risk_tier import check_risk_approval  # noqa: E402
@@ -32,6 +32,7 @@ def run_step(title: str, script_name: str) -> int:
 def main() -> int:
     enable_line_buffered_stdio()
     ensure_local_git_privacy(REPO)
+    gate = GateRun("preflight")
     live_print("==================================================")
     live_print("[Preflight] Harness preflight verification")
     live_print("==================================================")
@@ -54,7 +55,7 @@ def main() -> int:
 
     live_print("\n==================================================")
     overall_pass = (hook_code == 0) and (str_code == 0) and db_ok and (lint_code == 0) and risk_ok
-    write_gate_result("preflight", {
+    result = gate.finish({
         "schema_version": 1,
         "status": "PASS" if overall_pass else "FAIL",
         "exit_code": 0 if overall_pass else 1,
@@ -68,7 +69,7 @@ def main() -> int:
         },
         "detail": "" if overall_pass else "preflight steps failed; see step exit codes",
     })
-    if overall_pass:
+    if overall_pass and result["status"] == "PASS":
         live_print("[SUCCESS] PREFLIGHT PASSED: ready for assembleDebug.")
         try:
             from check_kit_update import update_banner

@@ -50,31 +50,8 @@ from _hook_state import (  # noqa: E402
 from _live_process import enable_line_buffered_stdio, live_print  # noqa: E402
 from _repo_files import REPO, changed_paths  # noqa: E402
 
-LEAF_KEYS = [
-    "bug_reviewer",
-    "convention_reviewer",
-    "security_reviewer",
-    "perf_guardian",
-    "regression_reviewer",
-]
-
-LEAF_PASS_VALUES = {
-    "bug_reviewer": "BUG_PASS",
-    "convention_reviewer": "CONVENTION_PASS",
-    "security_reviewer": "SECURITY_PASS",
-    "perf_guardian": "PERF_PASS",
-    "regression_reviewer": "REGRESSION_PASS",
-    "test_quality": "TEST_PASS",
-}
-
-LEAF_ALIASES = {
-    "bug_reviewer": ("bug_reviewer", "bug-reviewer-agent", "bug-reviewer", "bug"),
-    "convention_reviewer": ("convention_reviewer", "convention-reviewer-agent", "convention-reviewer", "convention"),
-    "security_reviewer": ("security_reviewer", "security-reviewer-agent", "security-reviewer", "security"),
-    "perf_guardian": ("perf_guardian", "perf-anr-guardian-agent", "perf-anr-guardian", "perf"),
-    "regression_reviewer": ("regression_reviewer", "regression-impact-reviewer-agent", "regression-impact-reviewer", "regression"),
-    "test_quality": ("test_quality", "test-quality-reviewer-agent", "test-quality-reviewer", "test_quality_reviewer", "test"),
-}
+from _review_contract import LEAF_KEYS, LEAF_PASS_VALUES, LEAF_ALIASES, required_keys, package_valid
+from _evidence import context, matches, atomic_json
 
 
 def _product_bits() -> dict:
@@ -130,35 +107,19 @@ def working_files(files_override: list[tuple[str, str]] | None = None) -> list[t
     return out
 
 
-def _normalize_check(name: str, rec: dict | None, head_sha: str) -> dict:
-    if rec is None:
-        return {
-            "name": name,
-            "status": "MISSING",
-            "exit_code": None,
-            "env_class": None,
-            "detail": "gate artifact not found; run this gate first",
-        }
-    exit_code = rec.get("exit_code")
-    env_class = str(rec.get("env_class") or "").upper()
-    status = str(rec.get("status") or "").upper()
-    if status not in ("PASS", "FAIL", "ENV"):
-        if env_class in ("ENV", "AMBIGUOUS") or exit_code == EXIT_ENV:
-            status = "ENV"
-        elif exit_code == 0:
-            status = "PASS"
-        else:
-            status = "FAIL"
-    artifact_head = str(rec.get("git_sha") or "")
-    if head_sha and artifact_head and artifact_head != head_sha:
-        status = "STALE"
-    return {
-        "name": name,
-        "status": status,
-        "exit_code": exit_code,
-        "env_class": env_class,
-        "detail": str(rec.get("detail") or "")[:300],
-    }
+def _normalize_check(name: str, rec: dict | None, head_sha: str, identity: dict | None = None) -> dict:
+    status, detail = "MISSING", "gate artifact not found; run this gate first"
+    if rec is not None:
+        status = str(rec.get("status") or "").upper()
+        detail = str(rec.get("detail") or "")[:300]
+        if not matches(rec, identity or context()) or rec.get("git_sha") != head_sha:
+            status, detail = "STALE", "gate evidence belongs to different inputs/task or an old schema"
+        elif status == "PASS" and rec.get("exit_code") != 0:
+            status, detail = "FAIL", "contradictory gate status and exit code"
+        elif status not in ("PASS", "FAIL", "ENV", "STALE"):
+            status, detail = "FAIL", "incomplete or unknown gate status"
+    return {"name": name, "status": status, "exit_code": (rec or {}).get("exit_code"),
+            "env_class": (rec or {}).get("env_class"), "detail": detail}
 
 
 def _pick_leaf(leaves: dict, key: str) -> str | None:
@@ -201,17 +162,26 @@ def _review_outcome(tree_fp: str | None) -> tuple[dict, dict, str, bool]:
         check["detail"] = "review round EXPIRED via the barrier TTL; re-dispatch the 5 leaves"
         return check, leaves_map, stale, expired
     raw_leaves = record.get("leaves") or {}
-    has_tests = bool(record.get("contains_tests"))
-    active_keys = list(LEAF_KEYS)
-    if has_tests:
-        active_keys.append("test_quality")
+    active_keys = required_keys(record)
+    has_tests = "test_quality" in active_keys
 
     for key in active_keys:
         leaves_map[key] = _pick_leaf(raw_leaves, key)
     missing = [key for key in active_keys if leaves_map.get(key) != LEAF_PASS_VALUES[key]]
-    if verdict not in ("APPROVED", "PASS"):
+    if not package_valid(record):
+        check["status"] = "FAIL"
+        check["detail"] = "review package is stale, missing, partial or uses legacy evidence"
+        stale = check["detail"]
+    elif verdict not in ("APPROVED", "PASS"):
         check["status"] = "FAIL"
         check["detail"] = f"review verdict is {verdict or 'PENDING'}, not APPROVED"
+    elif record.get("findings") or any(
+        not isinstance(raw_leaves.get(alias), dict)
+        or not raw_leaves[alias].get("report")
+        for key in active_keys for alias in [next((a for a in LEAF_ALIASES[key] if a in raw_leaves), key)]
+    ):
+        check["status"] = "FAIL"
+        check["detail"] = "unresolved findings or missing reviewer reports"
     elif missing:
         check["status"] = "FAIL"
         check["detail"] = "missing leaf verdicts: " + ", ".join(missing)
@@ -223,24 +193,18 @@ def _review_outcome(tree_fp: str | None) -> tuple[dict, dict, str, bool]:
     if fp_now is not None:
         record_fp = record.get("tree_fingerprint")
         ledger_fp = ledger.get("tree_fingerprint")
-        if record_fp and record_fp != fp_now:
+        if record_fp != fp_now:
             stale = "code changed after the review package was generated (verdict fingerprint mismatch)"
-        elif ledger_fp and ledger_fp != fp_now:
+        elif ledger_fp != fp_now:
             stale = "code changed after the review package was generated (ledger fingerprint mismatch)"
     return check, leaves_map, stale, expired
 
 
 def _baseline_ignored_count() -> int:
+    record = read_gate_result("unit_tests") or {}
     try:
-        path = state_path().with_name("baseline.json")
-        if not path.is_file():
-            return 0
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return 0
-        tests = data.get("unit_tests") or []
-        return len(tests) if isinstance(tests, list) else 0
-    except Exception:
+        return max(0, int(record.get("baseline_ignored", 0)))
+    except (TypeError, ValueError):
         return 0
 
 
@@ -252,24 +216,37 @@ def build_verdict(
     files_override: list[tuple[str, str]] | None = None,
     bits: dict | None = None,
 ) -> dict:
+    if task_id:
+        os.environ["HARNESS_TASK_ID"] = task_id
     bits = bits or _product_bits()
+    identity = context()
     head = head_sha if head_sha is not None else current_head_sha()
-    fp = tree_fp if tree_fp is not None else tree_code_fingerprint()
+    fp = tree_fp if tree_fp is not None else identity["snapshot_id"]
     files = working_files(files_override)
     required_devices = str(bits.get("device_mode") or "manual_only") != "disabled"
 
     checks = [
         _normalize_check(
             "unit_tests",
-            read_gate_result("unit_tests")
-            or read_gate_result(gate_artifact_name(bits["unit_test_task"])),
-            head,
+            read_gate_result("unit_tests"),
+            head, identity,
         ),
-        _normalize_check("preflight", read_gate_result("preflight"), head),
-        _normalize_check("assemble", read_gate_result(gate_artifact_name(bits["assemble_task"])), head),
+        _normalize_check("preflight", read_gate_result("preflight"), head, identity),
+        _normalize_check("assemble", read_gate_result(gate_artifact_name(bits["assemble_task"])), head, identity),
     ]
     if required_devices:
-        checks.append(_normalize_check("device", read_gate_result("device"), head))
+        for gate in ("device_install", "device_launch", "device_smoke", "manual_signoff"):
+            if gate == "manual_signoff" and bits.get("device_mode") != "manual_only":
+                continue
+            checks.append(_normalize_check(gate, read_gate_result(gate), head, identity))
+        from _device_evidence import validate_delivery
+        device_problem = validate_delivery(bits)
+        if device_problem:
+            checks.append({"name": "device_binding", "status": "FAIL", "detail": device_problem})
+    for key, expected_task in (("unit_tests", bits["unit_test_task"]), (gate_artifact_name(bits["assemble_task"]), bits["assemble_task"])):
+        rec = read_gate_result(key)
+        if rec and rec.get("task") != expected_task:
+            checks.append({"name": "task_binding", "status": "FAIL", "detail": "Gate belongs to a different Gradle task"})
     review_check, leaves_map, stale_review, expired = _review_outcome(fp)
     checks.append(review_check)
 
@@ -293,9 +270,13 @@ def build_verdict(
             status = "BLOCKED"
             blocked_by.extend(f"{c['name']}: {c['detail']}" for c in bad)
 
+    if not matches(identity, context()):
+        status = "STALE"
+        blocked_by.append("Inputs changed while aggregating gate evidence; rerun verification")
+
     return {
-        "schema_version": 1,
-        "task_id": task_id,
+        **identity,
+        "task_id": identity["task_id"],
         "status": status,
         "verdict_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "git_context": {
@@ -314,16 +295,7 @@ def build_verdict(
 
 def write_last_verdict(verdict: dict) -> Path | None:
     target = state_path().with_name("last_verdict.json")
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps(verdict, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
-        os.replace(tmp, target)
-        return target
-    except Exception:
-        return None
+    return atomic_json(target, verdict)
 
 
 def exit_code_for(status: str) -> int:
@@ -342,7 +314,11 @@ def main() -> int:
     args = parser.parse_args()
 
     task_id = (args.task or os.environ.get("HARNESS_TASK_ID") or "").strip()
-    verdict = build_verdict(task_id=task_id)
+    try:
+        verdict = build_verdict(task_id=task_id)
+    except (RuntimeError, OSError, ValueError) as exc:
+        live_print(f"[BLOCKED] Cannot establish current evidence: {exc}", err=True)
+        return 1
     target = write_last_verdict(verdict)
 
     live_print(f"[*] Final verdict: {verdict['status']}")

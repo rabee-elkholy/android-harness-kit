@@ -7,3 +7,6 @@ Thumbs.db
 agents/state/
 agents/cache/
 agents/scripts/__pycache__/
+/dist/
+/build/
+/*.egg-info/

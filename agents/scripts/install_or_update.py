@@ -23,6 +23,8 @@ import re
 import shutil
 import subprocess
 import sys
+import uuid
+from _evidence import atomic_json, locked
 from pathlib import Path
 
 # Add current scripts directory to import wizard & adapter utilities
@@ -94,17 +96,14 @@ def load_answers(repo: Path, explicit_answers_path: str | None) -> dict:
 
 
 def create_backup(repo: Path, answers: dict) -> Path | None:
-    if not answers.get("backup", True):
+    if not answers.get("backup", True) and not (repo / ".agents").is_dir():
         return None
 
-    now_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    now_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
     backup_root = repo / ".harness-backup"
     backup_root.mkdir(parents=True, exist_ok=True)
 
-    # Prune older backups so strictly only 1 backup remains
-    for child in backup_root.iterdir():
-        if child.is_dir():
-            shutil.rmtree(child, ignore_errors=True)
+    # Keep existing recovery points until a complete update has succeeded.
 
     target_backup = backup_root / now_str
     target_backup.mkdir(parents=True, exist_ok=True)
@@ -122,6 +121,8 @@ def create_backup(repo: Path, answers: dict) -> Path | None:
         ".junie",
         ".kilocode",
         ".gemini",
+        ".gitignore",
+        ".git/info/exclude",
         "AGENTS.md",
         "CLAUDE.md",
         "GEMINI.md",
@@ -138,6 +139,7 @@ def create_backup(repo: Path, answers: dict) -> Path | None:
         src = repo / item
         if src.exists():
             dest = target_backup / item
+            dest.parent.mkdir(parents=True, exist_ok=True)
             if src.is_dir():
                 shutil.copytree(src, dest, dirs_exist_ok=True)
             else:
@@ -201,13 +203,9 @@ def preserve_references(repo: Path) -> dict[str, str]:
     return preserved
 
 
-def place_engine(repo: Path, kit: Path, preserved_refs: dict[str, str]) -> None:
+def _populate_engine(repo: Path, kit: Path, preserved_refs: dict[str, str], dest: Path) -> None:
     """Atomically places .agents/ from kit, cleans transient state, and restores references."""
-    dest = repo / ".agents"
     src_agents = kit / "agents"
-
-    if dest.exists():
-        shutil.rmtree(dest, ignore_errors=True)
 
     shutil.copytree(src_agents, dest)
 
@@ -240,6 +238,40 @@ def place_engine(repo: Path, kit: Path, preserved_refs: dict[str, str]) -> None:
             p.unlink(missing_ok=True)
         for name, content in preserved_refs.items():
             (dest_ref_dir / name).write_text(content, encoding="utf-8")
+
+
+def place_engine(repo: Path, kit: Path, preserved_refs: dict[str, str]) -> None:
+    """Stage and validate before replacing; restore the old engine on failure."""
+    staging_root = repo / ".harness-setup"
+    staging_root.mkdir(parents=True, exist_ok=True)
+    staging = staging_root / ("engine-" + uuid.uuid4().hex)
+    previous = staging_root / "previous-engine"
+    dest = repo / ".agents"
+    journal = staging_root / "engine-transaction.json"
+    if previous.exists():
+        raise RuntimeError("Interrupted update found; run update again through transaction recovery")
+    try:
+        _populate_engine(repo, kit, preserved_refs, staging)
+        if not (staging / "scripts" / "final_verdict.py").is_file() or not (staging / "VERSION").is_file():
+            raise RuntimeError("Incomplete staged engine")
+        # Baselines are durable debt records; gate artifacts deliberately expire.
+        baseline = dest / "state" / "baseline.json"
+        if baseline.is_file():
+            shutil.copy2(baseline, staging / "state" / "baseline.json")
+        atomic_json(journal, {"staging": str(staging), "previous": str(previous), "phase": "prepared"})
+        if dest.exists():
+            dest.rename(previous)
+        staging.rename(dest)
+        atomic_json(journal, {"phase": "placed"})
+    except BaseException:
+        if previous.exists():
+            if dest.exists():
+                shutil.rmtree(dest)
+            previous.rename(dest)
+        raise
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
 
 
 def generate_product_py(repo: Path, answers: dict, kit: Path) -> Path:
@@ -559,7 +591,7 @@ def sync_code_graph(repo: Path) -> dict:
         }
 
 
-def execute_install_or_update(
+def _execute_install_or_update(
     repo: Path,
     kit: Path,
     answers_path: str | None = None,
@@ -591,6 +623,9 @@ def execute_install_or_update(
         backup_dir = create_backup(repo, answers)
         if backup_dir:
             print(f"      Backup created at: .harness-backup/{backup_dir.name}", flush=True)
+
+    if backup_dir:
+        atomic_json(repo / ".harness-setup" / "update-transaction.json", {"backup": str(backup_dir)})
 
     # 2. Preserve references
     print("[2/6] Preserving custom domain reference guides...", flush=True)
@@ -639,6 +674,86 @@ def execute_install_or_update(
         "preserved_references": list(preserved_refs.keys()),
         "verification": verification,
     }
+
+
+def _restore_update_files(repo: Path) -> None:
+    journal = repo / ".harness-setup" / "update-transaction.json"
+    if not journal.is_file():
+        return
+    data = json.loads(journal.read_text(encoding="utf-8"))
+    backup = Path(data["backup"]).resolve()
+    if not backup.is_relative_to((repo / ".harness-backup").resolve()):
+        raise RuntimeError("Recovery backup escapes the project backup directory")
+    manifest = (backup / "manifest.txt").read_text(encoding="utf-8")
+    for line in manifest.splitlines():
+        match = re.fullmatch(r"- \[([ x])\] (.+)", line)
+        if not match or match[2] == "rollback-prompt.md":
+            continue
+        name = match[2]
+        dest = repo / name
+        if not dest.resolve().is_relative_to(repo.resolve()):
+            raise RuntimeError("Unsafe recovery path")
+        if dest.is_dir():
+            shutil.rmtree(dest)
+        elif dest.exists():
+            dest.unlink()
+        source = backup / name
+        if match[1] == "x" and source.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, dest)
+            else:
+                shutil.copy2(source, dest)
+    _expire_restored_results(repo)
+    journal.unlink()
+
+
+def _expire_restored_results(repo: Path) -> None:
+    # A restored tool version must rerun its gates; preserve only durable debt.
+    state = repo / ".agents" / "state"
+    baseline = (state / "baseline.json").read_bytes() if (state / "baseline.json").is_file() else None
+    if state.exists():
+        shutil.rmtree(state)
+    state.mkdir(parents=True, exist_ok=True)
+    if baseline is not None:
+        (state / "baseline.json").write_bytes(baseline)
+
+
+def execute_install_or_update(*, repo: Path, kit: Path, answers_path: str | None = None,
+                              skip_backup: bool = False, skip_doctor: bool = False) -> dict:
+    """Recover interrupted engine swaps and retain a verified rollback copy."""
+    transaction_root = repo / ".harness-setup"
+    previous = transaction_root / "previous-engine"
+    journal = transaction_root / "engine-transaction.json"
+    with locked(repo / ".harness-backup" / "update.lock"):
+        _restore_update_files(repo)
+        if previous.exists():
+            dest = repo / ".agents"
+            if dest.exists():
+                shutil.rmtree(dest)
+            previous.rename(dest)
+            _expire_restored_results(repo)
+            journal.unlink(missing_ok=True)
+        try:
+            result = _execute_install_or_update(repo=repo, kit=kit, answers_path=answers_path,
+                                                skip_backup=skip_backup if not (repo / ".agents").is_dir() else False, skip_doctor=skip_doctor)
+            if not result["success"]:
+                raise RuntimeError("Updated engine failed verification; restoring previous engine")
+        except BaseException:
+            if previous.exists():
+                dest = repo / ".agents"
+                if dest.exists():
+                    shutil.rmtree(dest)
+                previous.rename(dest)
+                _expire_restored_results(repo)
+            _restore_update_files(repo)
+            journal.unlink(missing_ok=True)
+            raise
+        if previous.exists():
+            shutil.rmtree(previous)
+        journal.unlink(missing_ok=True)
+        (transaction_root / "update-transaction.json").unlink(missing_ok=True)
+        return result
 
 
 def main(argv: list[str] | None = None) -> int:

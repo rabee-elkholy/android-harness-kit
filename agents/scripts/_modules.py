@@ -18,11 +18,13 @@ def discover_source_roots(repo: Path) -> list[Path]:
     Recursive globs cover nested modules (:core:data) and KMP androidMain.
     """
     roots: dict[str, Path] = {}
-    for src_dir in ("main", "androidMain"):
-        for marker in _SRC_MARKERS:
-            for candidate in repo.glob(f"**/src/{src_dir}/{marker}"):
-                if candidate.is_dir() and not _is_skipped(candidate):
-                    roots[str(candidate)] = candidate
+    for marker in _SRC_MARKERS:
+        for candidate in repo.glob(f"**/src/*/{marker}"):
+            source_set = candidate.parent.name.lower()
+            if "test" in source_set:
+                continue
+            if candidate.is_dir() and not _is_skipped(candidate):
+                roots[str(candidate)] = candidate
     return [roots[k] for k in sorted(roots)]
 
 

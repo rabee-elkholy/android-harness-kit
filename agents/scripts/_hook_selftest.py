@@ -589,7 +589,7 @@ if pkg_path is not None:
     pending_rec = read_verdict_record(file_digest[:12])
     ok_pending = (
         pending_rec is not None
-        and pending_rec.get("schema_version") in (1, 2)
+        and pending_rec.get("schema_version") == 3
         and pending_rec.get("verdict") == "PENDING"
         and pending_rec.get("package", {}).get("sha256") == file_digest
         and pending_rec.get("package", {}).get("sha256_12") == file_digest[:12]
@@ -1079,7 +1079,7 @@ tx_file.write_text(
     + "\n",
     encoding="utf-8",
 )
-assemble_pass = run(cmd("gradlew.bat :app:assembleDebug", conversation=five_conv))
+assemble_pass = run(cmd("python .agents/scripts/run_gradle_task.py :app:assembleDebug", conversation=five_conv))
 ok_assemble_pass = assemble_pass["decision"] == "allow"
 print(
     f"assemble_after_pass_tokens: {assemble_pass['decision']} "
@@ -1105,7 +1105,7 @@ stuck_tx.write_text(
     + "\n",
     encoding="utf-8",
 )
-stuck_res = run(cmd("gradlew.bat :app:assembleDebug", conversation=stuck_conv))
+stuck_res = run(cmd("python .agents/scripts/run_gradle_task.py :app:assembleDebug", conversation=stuck_conv))
 ok_stuck = stuck_res["decision"] == "allow"
 print(
     f"assemble_verdicts_without_invoke: {stuck_res['decision']} "
@@ -1137,7 +1137,7 @@ dump_tx.write_text(
     + "\n",
     encoding="utf-8",
 )
-dump_res = run(cmd("gradlew.bat :app:assembleDebug", conversation=dump_conv))
+dump_res = run(cmd("python .agents/scripts/run_gradle_task.py :app:assembleDebug", conversation=dump_conv))
 ok_dump = dump_res["decision"] == "allow"
 print(
     f"assemble_ignores_file_dump_invoke: {dump_res['decision']} "
@@ -1167,7 +1167,7 @@ def _evidence_conv(name: str, entries: list[dict], mode: str) -> dict:
             encoding="utf-8",
         )
         run(invoke_five(name))
-        return run(cmd("gradlew.bat :app:assembleDebug", conversation=name))
+        return run(cmd("python .agents/scripts/run_gradle_task.py :app:assembleDebug", conversation=name))
     finally:
         if prev is None:
             os.environ.pop("HARNESS_EVIDENCE_MODE", None)
@@ -2288,6 +2288,8 @@ class _FakeProc:
         self.stderr = err
 
 _orig_run = pm_github.subprocess.run
+_original_which_for_gh = _shutil.which
+_shutil.which = lambda name: "gh" if name == "gh" else _original_which_for_gh(name)
 _gh_calls: list[list[str]] = []
 try:
     def _fake_run_ok(cmd, **kwargs):
@@ -2329,6 +2331,7 @@ try:
     ok_gh_denied_done = _raises_system_exit(pm_github.set_issue_status, 7, "done", "o/r")
 finally:
     pm_github.subprocess.run = _orig_run
+    _shutil.which = _original_which_for_gh
 
 _orig_which = _shutil.which
 try:
@@ -2606,7 +2609,7 @@ run(invoke_five("c-ttl"))
 _state_now = json.loads(STATE.read_text(encoding="utf-8"))
 _state_now["c-ttl"]["pending_since"] = time.time() - 100000
 STATE.write_text(json.dumps(_state_now), encoding="utf-8")
-ttl_res = run(cmd("gradlew.bat :app:assembleDebug", conversation="c-ttl"))
+ttl_res = run(cmd("python .agents/scripts/run_gradle_task.py :app:assembleDebug", conversation="c-ttl"))
 ok_ttl = ttl_res["decision"] == "allow"
 print(f"barrier_ttl_expiry_unblocks: {ttl_res['decision']} {'OK' if ok_ttl else 'FAIL ' + json.dumps(ttl_res)}")
 failed += int(not ok_ttl)
@@ -2834,7 +2837,7 @@ if cli_file.is_file():
             text=True,
             env=os.environ.copy(),
         )
-        ok_verify_pass = proc_v_ok.returncode == 0 and "[PASS]" in proc_v_ok.stdout
+        ok_verify_pass = proc_v_ok.returncode != 0  # Legacy review-only evidence must not approve delivery
         target_abs.write_text("class A changed\n", encoding="utf-8")
         proc_v_fail = subprocess.run(
             [sys.executable, str(cli_file), "verify", "--repo", str(verify_repo)],
@@ -2842,7 +2845,7 @@ if cli_file.is_file():
             text=True,
             env=os.environ.copy(),
         )
-        ok_verify_fail = proc_v_fail.returncode == 1 and "[FAIL]" in proc_v_fail.stdout
+        ok_verify_fail = proc_v_fail.returncode == 1 and ("BLOCKED" in proc_v_fail.stdout + proc_v_fail.stderr or "STALE" in proc_v_fail.stdout)
         ok_verify = ok_verify_pass and ok_verify_fail
         print(
             f"harness_cli verify round trip: {'OK' if ok_verify else 'FAIL ' + proc_v_ok.stdout + proc_v_fail.stdout}"

@@ -7,6 +7,7 @@ or when fallbackToDestructiveMigration is still present on that database.
 from __future__ import annotations
 
 import re
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,10 +177,69 @@ def _rel(path: Path) -> str:
     return path.relative_to(REPO).as_posix()
 
 
+def schema_shape(text: str) -> str:
+    """Ignore comments/method bodies; retain persisted field/annotation declarations.
+
+    A lexical fallback for detecting irrelevant edits, not a Room compiler.
+    Exported schemas remain required for changed persisted fields.
+    """
+    token = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
+    text = token.sub(lambda m: m.group(0) if m.group(0).startswith('"') else ' ', text)
+    fields = re.findall(r'(?:@\w+(?:\([^)]*\))?\s*)*(?:val|var)\s+\w+\s*:\s*[^,\n=)]+', text)
+    fields += re.findall(r'(?:@\w+(?:\([^)]*\))?\s*)*(?:public|private|protected)\s+(?:final\s+)?[\w<>?.]+\s+\w+\s*(?:=[^;]*)?;', text)
+    annotations = re.findall(r'@(Entity|Database|Embedded|ColumnInfo|PrimaryKey|Ignore|TypeConverters)(\([^)]*\))?', text)
+    return re.sub(r'\s+', '', repr((fields, annotations)))
+
+
+def exported_schema(repo: Path, database: Path, version: int, *, baseline: bool = False) -> dict | None:
+    name = database.stem
+    paths = [p for p in repo.glob(f"**/schemas/**/{version}.json")
+             if p.parent.name.split(".")[-1] == name and not set(p.relative_to(repo).parts) & {"build", ".git", ".agents"}]
+    if len(paths) != 1:
+        return None
+    path = paths[0]
+    raw = git_head_text(path.relative_to(repo).as_posix()) if baseline else path.read_text(encoding="utf-8")
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)["database"]
+        if data.get("version") != version or not isinstance(data.get("entities"), list):
+            return None
+        return {"entities": data["entities"], "views": data.get("views", [])}
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def migration_sources(database: Path) -> str:
+    """Include explicit providers referencing this database and their migration constants."""
+    text = database.read_text(encoding="utf-8")
+    sources = []
+    for path in list(REPO.rglob("*.kt")) + list(REPO.rglob("*.java")):
+        if path == database or set(path.relative_to(REPO).parts) & {"build", ".git", ".agents"}:
+            continue
+        sources.append(path.read_text(encoding="utf-8", errors="replace"))
+    providers = [s for s in sources if re.search(r"\b" + re.escape(database.stem) + r"\b", s)]
+    text += "\n" + "\n".join(providers)
+    registered = set(IDENT_RE.findall(" ".join(ADD_MIGRATIONS_RE.findall(text)))) - ADD_MIGRATIONS_KW
+    for source in sources:
+        for name in registered:
+            # Only include the initializer bound to a registered symbol.
+            found = re.search(r"\b" + re.escape(name) + r"\s*(?::[^=]+)?=\s*(?:object\s*:\s*|new\s+)?Migration\s*\(\s*\d+\s*,\s*\d+\s*\)", source)
+            if found:
+                text += "\n" + found.group(0)
+    return text
+
+
 def check_room_working_tree(modified_rels: list[str] | None = None) -> tuple[bool, str]:
     paths = changed_paths() if modified_rels is None else [REPO / r for r in modified_rels]
     changed_src = [p for p in paths if p.suffix in (".kt", ".java") and p.is_file()]
-    changed_types = changed_kotlin_types(changed_src)
+    schema_src = []
+    for path in changed_src:
+        old = git_head_text(_rel(path))
+        new = path.read_text(encoding="utf-8", errors="replace")
+        if old is None or schema_shape(old) != schema_shape(new):
+            schema_src.append(path)
+    changed_types = changed_kotlin_types(schema_src)
     changed_rels = {_rel(p) for p in changed_src}
 
     databases: list[tuple[Path, DatabaseDecl]] = []
@@ -188,7 +248,7 @@ def check_room_working_tree(modified_rels: list[str] | None = None) -> tuple[boo
             text = path.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
-        databases.append((path, parse_database_source(text, _rel(path))))
+        databases.append((path, parse_database_source(migration_sources(path), _rel(path))))
 
     affected: list[tuple[Path, DatabaseDecl, str]] = []
     for path, decl in databases:
@@ -224,6 +284,12 @@ def check_room_working_tree(modified_rels: list[str] | None = None) -> tuple[boo
                 f"{new_decl.rel}: entity schema changed but version stayed {new_ver}. "
                 f"Increment version and add Migration({old_ver}, {old_ver + 1}) or AutoMigration."
             )
+
+        if entity_hit and old_ver is not None and new_ver > old_ver:
+            old_schema = exported_schema(REPO, path, old_ver, baseline=True)
+            new_schema = exported_schema(REPO, path, new_ver)
+            if old_schema is None or new_schema is None:
+                failures.append(f"{new_decl.rel}: UNKNOWN schema coverage; export committed old and current Room schemas and run migration tests.")
 
         if old_ver is not None and new_ver > old_ver:
             if not is_migration_path_covered(old_ver, new_ver, new_decl.migrations):

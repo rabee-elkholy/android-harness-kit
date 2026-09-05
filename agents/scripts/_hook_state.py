@@ -22,40 +22,9 @@ STATE_EXPIRY_SECONDS = 7 * 24 * 3600
 
 @contextlib.contextmanager
 def state_lock(timeout: float = 5.0):
-    lock_file = state_path().with_suffix(".lock")
-    try:
-        lock_file.parent.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-    start = time.time()
-    acquired = False
-    fd = None
-    while time.time() - start < timeout:
-        try:
-            fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_RDWR)
-            acquired = True
-            break
-        except FileExistsError:
-            try:
-                if lock_file.is_file() and (time.time() - lock_file.stat().st_mtime > 10.0):
-                    lock_file.unlink(missing_ok=True)
-            except Exception:
-                pass
-            time.sleep(0.02)
-        except Exception:
-            break
-    try:
+    from _evidence import locked
+    with locked(state_path().with_suffix(".lock"), timeout):
         yield
-    finally:
-        if acquired and fd is not None:
-            try:
-                os.close(fd)
-            except Exception:
-                pass
-            try:
-                lock_file.unlink(missing_ok=True)
-            except Exception:
-                pass
 
 
 SUBAGENTS_DIR = Path(__file__).resolve().parent.parent / "subagents"
@@ -86,7 +55,10 @@ def state_path() -> Path:
     override = os.environ.get("HARNESS_HOOK_STATE")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parent.parent / "state" / "review-invokes.json"
+    from _repo_files import REPO
+    from _evidence import task_key
+    root = REPO / (".agents" if (REPO / ".agents").is_dir() else "agents")
+    return root / "state" / "tasks" / task_key() / "review-invokes.json"
 
 
 def transcript_path(conversation_id: str) -> Path:
@@ -625,39 +597,17 @@ _CODE_FP_SUFFIXES = {".kt", ".java", ".kts", ".cpp", ".c", ".h", ".hpp", ".aidl"
 
 def tree_code_fingerprint(repo: Path | None = None) -> str | None:
     """Stable hash over working-tree code paths that the review gate protects."""
-    try:
-        from _repo_files import REPO, changed_paths
+    from _repo_files import REPO
+    from _snapshot import capture
 
-        r = repo or REPO
-        names = []
-        for path in changed_paths():
-            suffix = path.suffix.lower()
-            if suffix in _CODE_FP_SUFFIXES:
-                pass
-            elif suffix == ".xml":
-                try:
-                    rel = f"/{path.relative_to(r).as_posix()}"
-                except ValueError:
-                    rel = f"/{path.as_posix()}"
-                lower_name = path.name.lower()
-                if lower_name in ("strings.xml", "plurals.xml") or "/values" in rel:
-                    continue
-            else:
-                continue
-            try:
-                names.append(path.relative_to(r).as_posix())
-            except ValueError:
-                names.append(path.as_posix())
-        if not names:
-            return None
-        return hashlib.sha256("\n".join(sorted(names)).encode("utf-8")).hexdigest()
-    except Exception:
-        return None
+    return capture(repo or REPO)["snapshot_id"]
 
 
 def record_review_ledger(package_path: Path, git_sha: str | None = None) -> None:
     """Persist the tree fingerprint a review package was generated against."""
+    from _evidence import context
     payload = {
+        **context(),
         "package": str(package_path),
         "sha256": file_sha256(Path(package_path)),
         "tree_fingerprint": tree_code_fingerprint(),
@@ -712,18 +662,11 @@ def write_verdict_record(pkg12: str, record: dict) -> bool:
     Never raises: evidence recording must not alter any safety decision.
     Returns True when the record was written.
     """
-    try:
-        target = _verdicts_dir() / f"verdict-{pkg12}.json"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps(record, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(tmp, target)
-        return True
-    except Exception:
-        return False
+    from _evidence import atomic_json
+    if not re.fullmatch(r"[0-9a-f]{12}", pkg12):
+        raise ValueError("Invalid review package identifier")
+    atomic_json(_verdicts_dir() / f"verdict-{pkg12}.json", record)
+    return True
 
 
 def read_verdict_record(pkg12: str) -> dict | None:

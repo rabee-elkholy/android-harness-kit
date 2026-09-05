@@ -20,12 +20,14 @@ from _hook_state import (  # noqa: E402
     tree_code_fingerprint,
     write_verdict_record,
 )
-from _repo_files import changed_paths  # noqa: E402
+from _repo_files import changed_paths, REPO  # noqa: E402
 
 enable_line_buffered_stdio()
 
-REPO = Path(__file__).resolve().parents[2]
-OUT_DIR = Path(__file__).resolve().parents[1] / "state" / "packages"
+from _hook_state import state_path
+from _evidence import context, matches
+from _snapshot import file_digest
+OUT_DIR = state_path().parent / "packages"
 
 HEADER_BEGIN = "# HARNESS_PACKAGE_HEADER v2"
 PACKAGE_SHA_MARKER = "PACKAGE_SHA256="
@@ -53,17 +55,7 @@ def git_head() -> str:
     return out if _GIT_SHA_RE.fullmatch(out) else ""
 
 
-def is_test_file(path_str: str) -> bool:
-    p = path_str.replace("\\", "/").lower()
-    return (
-        "/test/" in p
-        or "/androidtest/" in p
-        or "/sharedtest/" in p
-        or p.endswith("test.kt")
-        or p.endswith("tests.kt")
-        or p.endswith("test.java")
-        or p.endswith("tests.java")
-    )
+from _review_contract import is_test_file
 
 
 from risk_tier import classify_working_tree_risk  # noqa: E402
@@ -116,9 +108,9 @@ def build_files_map(max_files: int | None = None) -> tuple[dict[str, str], int]:
         except ValueError:
             rel = path.as_posix()
         try:
-            files_map[rel] = file_sha256(path)
-        except Exception:
-            continue
+            files_map[rel] = file_digest(path, REPO)
+        except (OSError, RuntimeError):
+            raise
     return files_map, len(all_changed)
 
 
@@ -129,8 +121,13 @@ def main(argv=None) -> int:
     parser.add_argument("--task", default=None, help="Task id recorded in the package header (default: $HARNESS_TASK_ID).")
     args = parser.parse_args(argv)
 
+    global OUT_DIR
+    if args.task:
+        os.environ["HARNESS_TASK_ID"] = args.task
+    OUT_DIR = state_path().parent / "packages"
+    identity = context()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + __import__("uuid").uuid4().hex[:12]
     out = OUT_DIR / f"review-{stamp}.diff"
 
     paths = args.paths
@@ -208,7 +205,7 @@ def main(argv=None) -> int:
         git(*diff_cmd),
     ]
 
-    untracked = git("ls-files", "--others", "--exclude-standard", *(["--", *paths] if paths else []))
+    untracked = git("ls-files", "--others", "--exclude-standard", "-z", *(["--", *paths] if paths else []))
     extra = []
     binary_extensions = {
         ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico",
@@ -218,8 +215,8 @@ def main(argv=None) -> int:
     }
     max_untracked_bytes = 256 * 1024
 
-    for line in untracked.splitlines():
-        rel = line.strip()
+    for line in untracked.split("\0"):
+        rel = line
         if not rel:
             continue
         file_path = REPO / rel
@@ -229,8 +226,12 @@ def main(argv=None) -> int:
             extra.append(f"[Binary file excluded: {rel}]\n")
             continue
         try:
+            if file_path.is_symlink():
+                extra.append("[Symlink: " + os.readlink(file_path) + "]\n")
+                continue
             st = file_path.stat()
             if st.st_size > max_untracked_bytes:
+                skipped_count += 1
                 extra.append(f"[Large file excluded ({st.st_size / 1024:.1f} KB > 256 KB): {rel}]\n")
                 continue
             content_bytes = file_path.read_bytes()
@@ -239,7 +240,7 @@ def main(argv=None) -> int:
                 continue
             extra.append(content_bytes.decode("utf-8", errors="replace"))
         except Exception as exc:
-            extra.append(f"(could not read: {exc})\n")
+            raise RuntimeError(f"Cannot read package input {rel}: {exc}") from exc
     if extra:
         chunks.append("\n## untracked files\n")
         chunks.extend(extra)
@@ -262,10 +263,14 @@ def main(argv=None) -> int:
     file_digest = file_sha256(out)
     pkg12 = file_digest[:12]
     git_sha = git_head()
+    if not matches(identity, context()):
+        out.unlink(missing_ok=True)
+        raise SystemExit("[FAIL] Inputs changed while generating review package; rerun")
     record_review_ledger(out, git_sha=git_sha)
     pending = {
-        "schema_version": 2,
-        "task_id": task_id,
+        **identity,
+        "partial": bool(paths),
+        "task_id": identity["task_id"],
         "git_sha": git_sha,
         "package": {"path": str(out.resolve()), "sha256": file_digest, "sha256_12": pkg12},
         "tree_fingerprint": fingerprint or None,

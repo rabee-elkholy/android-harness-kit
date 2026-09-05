@@ -3,7 +3,7 @@
 # android-agent-harness
 
 ### Deterministic Android Engineering for the AI Era
-**Turn Any AI Assistant into an Uncompromising Senior Android Engineering Team.**
+**Repeatable checks and review evidence for AI-assisted Android development.**
 
 [![CI Build](https://img.shields.io/github/actions/workflow/status/rabee-elkholy/android-agent-harness/ci.yml?branch=main&style=flat-square&label=CI%20Build)](https://github.com/rabee-elkholy/android-agent-harness/actions/workflows/ci.yml)
 [![PyPI Version](https://img.shields.io/pypi/v/android-agent-harness?color=blue&style=flat-square&label=PyPI)](https://pypi.org/project/android-agent-harness/)
@@ -22,22 +22,22 @@
 
 ---
 
-## Why the Harness? Prompts are Polite Requests. The Harness is an OS-Level Cage.
+## Why the Harness? Explicit checks and review evidence
 
 Prompts, `.cursorrules`, and `SKILL.md` files decay as conversation context expands. AI coding assistants eventually hallucinate success, break Room migrations, ignore RTL layouts, and push unreviewed code.
 
-The **Android Agent Harness** enforces deterministic, cryptographic, and OS-level execution barriers outside the model brain:
+The **Android Agent Harness** combines deterministic checks with AI review. Hook enforcement varies by host; local evidence is not an OS security boundary:
 
 | Android Failure Mode | Bare AI Assistant | Android Agent Harness |
 | :--- | :--- | :--- |
-| **Code Discovery** | Speculative 50-file grepping; reads random source files; burns 100k tokens. | **Universal Code Graph (`project_graph.py`)**: Instant Clean Architecture slices in <100ms. |
+| **Code Discovery** | Speculative 50-file grepping; reads random source files; burns 100k tokens. | **Universal Code Graph (`project_graph.py`)**: Cached, heuristic architecture slices; verify ambiguous relationships in source. |
 | **Room Migrations** | Modifies `@Entity` without migration -> app crashes on user upgrade. | **Room Guard (`room_guard.py`)**: Hard-blocks un-migrated Kotlin & Java entities. |
 | **Localization & RTL** | Hardcodes strings, drops Arabic (`values-ar`), scrambles placeholders. | **Adaptive String Guard (`check_strings.py`)**: Sub-second diff-scoped parity check. |
-| **ANR & Main-Thread I/O** | Runs disk/network I/O on `Dispatchers.Main`; leaks sensor listeners. | **Perf & ANR Guardian**: Enforces 60/120 FPS fluidity and lifecycle unregistration. |
-| **Review Verification** | Model declares "LGTM!" and assumes its own fix works. | **Cryptographic Barrier**: Assembly (`:assembleDebug`) locked until 6 guardians emit SHA-256 tokens. |
+| **ANR & Main-Thread I/O** | Runs disk/network I/O on `Dispatchers.Main`; leaks sensor listeners. | **Perf & ANR Guardian**: Checks common performance and lifecycle risks; frame-rate claims require device measurements. |
+| **Review Verification** | Model declares "LGTM!" and assumes its own fix works. | **Delivery evidence**: Five reviews, plus test review when needed, bound to the current content snapshot. |
 | **Rogue Git Commits** | Runs `git commit` or `git push --force` to hide compilation mistakes. | **OS Interceptor (`pre_tool_safety.py`)**: Hard-denies unauthorized Git and ADB mutations. |
 | **Host Scrapes & Loops** | Scans developer home directories (`C:\Users\...`) when third-party tools fail. | **Host Sandbox Guard**: Intercepts host filesystem traversals; enforces fail-fast tracker exit. |
-| **Legacy Codebases** | Linters output 4,000 legacy errors, stalling delivery. | **Zero Legacy Penalty**: Diff-scoped AST lint (`fast_kt_lint.py`) inspects modified lines in <1s. |
+| **Legacy Codebases** | Linters output 4,000 legacy errors, stalling delivery. | **Zero Legacy Penalty**: Diff-scoped lexical checks (`fast_kt_lint.py`) inspect modified lines; these do not replace compiler-backed lint. |
 
 ---
 
@@ -94,7 +94,7 @@ The **Android Agent Harness** solves this with an integrated, pre-warmed **Unive
   ```bash
   python .agents/scripts/project_graph.py --find ProfileRepository
   ```
-* **80%+ Token Savings**: Eliminates exploratory reading loops, cutting discovery phase token consumption by over 80%.
+* **Measure discovery cost**: A benchmark harness is included; token savings and latency are workload-dependent and have not been established here as universal percentages.
 
 ---
 
@@ -145,7 +145,7 @@ Software that compiles is not necessarily software that works on mobile. The har
 
 ---
 
-## Quickstart in 60 Seconds
+## Quickstart
 
 ### Option A: Via AI Chat Prompt (Recommended)
 Open a new chat session in your AI assistant (Antigravity, Claude Code, Cursor, Copilot, Windsurf) at your project root and paste:
@@ -166,14 +166,14 @@ android-harness init
 
 ---
 
-## Environment Adaptability: Native Superpowers with Zero-Degradation Parity
+## Environment Adaptability: Host capabilities and enforcement limits
 
-The harness automatically detects the host assistant environment at runtime (`_environment.py`) and seamlessly leverages platform-specific superpowers while preserving 100% verification rigor across portable CLI assistants:
+The harness automatically detects the host assistant environment at runtime (`_environment.py`) and seamlessly leverages platform-specific superpowers with explicit differences between hook-enforced and instruction-driven hosts:
 
 | Capability | Google Antigravity | OpenAI Codex / Claude Code / Cursor |
 | :--- | :--- | :--- |
 | **Command Execution** | **Self-Healing Rewrite**: PreToolUse hook automatically rewrites `./gradlew ...` to `run_gradle_task.py` via `overwrite`. | **Fail-Closed Guidance**: Intercepts raw gradlew and outputs portable script replacement. |
-| **Delivery Barrier** | **Physical Stop Hook**: `delivery-stop-guard` intercepts termination if unreviewed code exists; includes diff-aware loop breaker. | **Cross-Platform Bridge (`record_review.py`)**: Direct verdict artifact generation with strict gate parity. |
+| **Delivery Barrier** | **Physical Stop Hook**: `delivery-stop-guard` intercepts termination if unreviewed code exists; includes diff-aware loop breaker. | **Cross-Platform Bridge (`record_review.py`)**: Structured review reports; evidence provenance depends on the host. |
 | **Review Summaries** | **Generative UI Widgets**: Inline `<agent-embed>` Tailwind CSS cards with collapsible review accordions (`render_ui.py`). | **High-Signal Markdown**: Clean ASCII tables with zero emojis and sub-second rendering. |
 | **Missing Scenarios** | **Interactive Modals (`ask_question`)**: Clickable radio options for edge-case alignment and device sign-off. | **Structured Chat Handshakes**: Structured prompts with explicit choices matching user conversation language. |
 | **Design Alignment** | **Proactive Slash Commands**: Recommends `/grill-me` for design alignment and `/goal` for tasks. | **Standard Interactive Prompts**: Direct step-by-step TDD interviews. |
@@ -183,10 +183,25 @@ The harness automatically detects the host assistant environment at runtime (`_e
 ## Supported AI Environments (14 Tools, 3 Tiers)
 
 * **Hook-Enforced & Adaptive**: Google Antigravity (PreToolUse self-healing overwrite, Stop lifecycle hook, Generative UI), Claude Code, GitHub Copilot.
-* **Rule-Driven with Parity Bridge**: OpenAI Codex, Cursor, Windsurf, Cline, Roo Code, Amazon Q, Continue, Junie, Kilo, Goose, Qwen (`record_review.py` 100% parity).
+* **Rule-Driven with Parity Bridge**: OpenAI Codex, Cursor, Windsurf, Cline, Roo Code, Amazon Q, Continue, Junie, Kilo, Goose, Qwen (`record_review.py` structured, self-reported evidence).
 * **Prompt-Only**: Aider, Zed, Devin, Amp, Factory, Jules, Warp, OpenCode (`AGENTS.md` standard).
 
 ---
+
+## Evidence integrity update (unreleased)
+
+Delivery uses schema-v3 evidence bound to checkout, task, HEAD and input content.
+Changing inputs invalidates review, test, build and device evidence. Legacy results
+must be regenerated. `android-harness verify` validates the complete delivery;
+review-only files and bulk `--approve-all` cannot approve delivery.
+
+Installation and launch are separate from scenario testing. Record smoke and
+manual results with `record_device_verification.py`; see the
+[evidence contract and migration guide](docs/evidence-contract.md).
+Hashes prove freshness, not independent reviewers or human identity. A writer
+of the engine and its evidence can tamper with both; use independent CI for a
+stronger trust boundary. Graph discovery is heuristic: inspect source or search
+when a relationship is absent or ambiguous.
 
 ## Documentation & Deep-Dives
 

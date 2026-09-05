@@ -5,6 +5,8 @@ description: Comprehensive Android Harness Quality-First Delivery Rules, archite
 
 # this Android app — Quality-First Multi-Agent Delivery Rules
 
+Scope: these Android application rules govern installed client checkouts. Development of the Python kit follows the root AGENTS.md kit-development scope.
+
 Single source of truth for AI work in this checkout. Skills are domain knowledge. Workflows are short pointers back here. If a workflow, skill, or reminder disagrees with this file, this file wins.
 
 The developer works **locally** in their IDE on this checkout. The agent never uses Git worktrees, never commits, and never opens PRs.
@@ -12,6 +14,18 @@ The developer works **locally** in their IDE on this checkout. The agent never u
 Every subagent must use `model="inherit"`. Never pin `flash`/`pro` to a different SKU.
 
 ---
+
+## Current delivery evidence contract
+
+For schema-v3 delivery, follow `agents/EVIDENCE.md` in the kit or `.agents/EVIDENCE.md` in an installed project.
+All gates must match the current checkout/task/content snapshot. Old results,
+bulk approvals, partial review packages, and install/start alone cannot establish
+APPROVED. Always use `run_tests_gate.py` for unit-test delivery, including projects
+without a baseline. Record per-reviewer structured reports using `--report`.
+After device scenario testing, record smoke evidence and (in manual mode) developer
+sign-off using `record_device_verification.py`. These requirements take precedence
+over older command examples below. Regenerate evidence after changing inputs.
+
 
 ## Quality-First & High-Signal Communication
 
@@ -287,7 +301,7 @@ Optional sixth slot in non-test diffs: `qa-diagnostics-agent` or `android-ui-exp
   * **Interactive Modals (`ask_question`)**: Proactively use structured interactive modals for missing-scenario interviews and device testing sign-offs.
   * **Proactive Slash Commands**: Recommend `/grill-me` for design and edge-case alignment and `/goal` for comprehensive execution.
 - **OpenAI Codex / Claude Code / Cursor Parity**:
-  * **Cross-Platform Review Recording**: Run `python .agents/scripts/record_review.py --approve-all --pkg <hash>` or `--leaf <name> --verdict <PASS>` to record review verdicts directly without Antigravity transcripts.
+  * **Cross-Platform Review Recording**: Run `python .agents/scripts/record_review.py --pkg <hash> --leaf <name> --verdict <PASS> --report <report.json>` with a structured `--report` for each leaf to record review verdicts directly without Antigravity transcripts.
   * **Zero-Degradation Guardrails**: Fail-closed pre-tool security, clean Markdown fallback cards (`render_ui.py`), and 100% test & lint gate enforcement.
 - **Interactive Preference Codification & Ref-Sync Protocol (Grill-Me vs Standard Interview)**:
   * When the developer introduces or requests a new architectural, design, or project-specific preference/rule:

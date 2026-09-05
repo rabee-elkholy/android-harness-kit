@@ -524,6 +524,8 @@ def _record_verdict(
                         leaf,
                         {
                             "token": token,
+                            "report": {"summary": chunk, "source": "native_transcript"},
+                            "attestation": "native_transcript",
                             "evidence": {
                                 "pkg": evidence.group(1) if evidence else "",
                                 "cites": int(evidence.group(2)) if evidence else 0,

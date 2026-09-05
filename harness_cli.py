@@ -503,168 +503,24 @@ def cmd_explain(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    ensure_kit(args.kit)
+    kit = ensure_kit(args.kit)
     repo = find_repo(args.repo) if args.repo else Path.cwd().resolve()
+    scripts = repo / ".agents" / "scripts"
+    if not scripts.is_dir():
+        scripts = _script_root(kit)
     if args.verdict:
-        verdict_path = Path(args.verdict).expanduser().resolve()
-    else:
-        candidates: list[Path] = []
-        for rel in (".agents/state/verdicts", "agents/state/verdicts"):
-            vdir = repo / rel
-            if vdir.is_dir():
-                candidates.extend(sorted(vdir.glob("verdict-*.json")))
-        if not candidates:
-            raise SystemExit(
-                "[ERROR] No verdict artifacts found under the repo state dirs. "
-                "Run `python .agents/scripts/review_package.py` and complete a "
-                "5-leaf review round first."
-            )
-        verdict_path = candidates[-1]
-    try:
-        record = json.loads(verdict_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise SystemExit(f"[ERROR] Cannot read verdict {verdict_path}: {exc}")
-    if not isinstance(record, dict) or record.get("schema_version") not in (1, 2):
-        raise SystemExit("[FAIL] verdict artifact missing or unsupported schema_version (expected 1 or 2).")
-    print(f"[*] Verifying {verdict_path.name} against {repo}")
-
-    problems: list[str] = []
-
-    if record.get("verdict") != "PASS":
-        problems.append(f"verdict is {record.get('verdict')!r}, expected PASS")
-
-    package = record.get("package") or {}
-    raw_pkg_path = str(package.get("path") or "").strip()
-    pkg_sha = str(package.get("sha256") or "")
-    if raw_pkg_path:
-        pkg_path = Path(raw_pkg_path).resolve()
-        repo_res = repo.resolve()
-        temp_res = Path(tempfile.gettempdir()).resolve()
-        is_safe_pkg = (
-            repo_res in pkg_path.parents
-            or pkg_path == repo_res
-            or temp_res in pkg_path.parents
-        )
-        if not is_safe_pkg:
-            problems.append(f"review package path escapes allowed directories: {raw_pkg_path}")
-        elif pkg_path.is_file() and pkg_sha:
-            digest = hashlib.sha256(pkg_path.read_bytes()).hexdigest()
-            if digest != pkg_sha:
-                problems.append(f"review package content changed since the round: {pkg_path.name}")
-        elif not pkg_path.is_file():
-            problems.append(f"review package file missing: {pkg_path}")
-    else:
-        problems.append("review package path missing in verdict")
-
-    files = record.get("files") or {}
-    missing: list[str] = []
-    changed: list[str] = []
-    escaped: list[str] = []
-    repo_res = repo.resolve()
-    for rel, want in sorted(files.items()):
-        fpath = (repo / str(rel).replace("/", os.sep)).resolve()
-        if repo_res not in fpath.parents and fpath != repo_res:
-            escaped.append(str(rel))
-            continue
-        if not fpath.is_file():
-            missing.append(str(rel))
-            continue
-        digest = hashlib.sha256(fpath.read_bytes()).hexdigest()
-        if digest != want:
-            changed.append(str(rel))
-    for rel in escaped:
-        problems.append(f"reviewed file path escapes repository root: {rel}")
-    for rel in missing[:10]:
-        problems.append(f"file from the reviewed diff is missing in this checkout: {rel}")
-    if len(missing) > 10:
-        problems.append(f"... and {len(missing) - 10} more missing files")
-    for rel in changed[:10]:
-        problems.append(f"file changed since the verified round: {rel}")
-    if len(changed) > 10:
-        problems.append(f"... and {len(changed) - 10} more changed files")
-
-    CANONICAL_LEAVES = {
-        "bug",
-        "convention",
-        "conv",
-        "security",
-        "perf",
-        "regression",
-        "bug-reviewer-agent",
-        "convention-reviewer-agent",
-        "security-reviewer-agent",
-        "perf-anr-guardian-agent",
-        "regression-impact-reviewer-agent",
-    }
-    leaves = record.get("leaves") or {}
-    if record.get("verdict") == "PASS":
-        if len(leaves) != 5:
-            problems.append(f"{len(leaves)}/5 leaf verdicts recorded")
-        else:
-            unknown_leaves = set(leaves.keys()) - CANONICAL_LEAVES
-            if unknown_leaves:
-                problems.append(f"unknown leaf names in verdict: {sorted(unknown_leaves)}")
-
-    stale = False
-    git_sha = str(record.get("git_sha") or "")
-    if git_sha:
-        proc_head = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        head = (proc_head.stdout or "").strip()
-        if re.fullmatch(r"[0-9a-f]{40}", head) and head != git_sha:
-            stale = True
-            print(f"[!] STALE: verdict generated at {git_sha[:12]} but HEAD is {head[:12]}.")
-
-    if args.rerun_checks:
-        engine_scripts = repo / ".agents" / "scripts"
-        if not engine_scripts.is_dir():
-            print("[i] --rerun-checks skipped: this checkout has no installed .agents engine.")
-        else:
-            checks_ok = True
-            for script in ("fast_kt_lint.py", "check_strings.py"):
-                target = engine_scripts / script
-                if not target.is_file():
-                    continue
-                proc_chk = subprocess.run(
-                    [sys.executable, str(target)],
-                    cwd=str(repo),
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    check=False,
-                )
-                if proc_chk.returncode != 0:
-                    checks_ok = False
-                    tail = "\n".join((proc_chk.stdout or "").strip().splitlines()[-8:])
-                    print(f"[FAIL] {script}:")
-                    print(tail)
-            if not checks_ok:
-                problems.append("re-run checks failed")
-
-    if problems:
-        print(f"\n[FAIL] verify failed with {len(problems)} problem(s):")
-        for item in problems:
-            print(f"  - {item}")
+        print("[FAIL] A single review artifact cannot establish delivery. Omit --verdict to validate all current gates.")
         return EXIT_FINDINGS
-    if stale:
-        print(
-            "\n[STALE] Package and file hashes match the recorded verdict, but it was "
-            "generated at a different commit than the current HEAD."
-        )
-        return EXIT_INCOMPLETE_OR_STALE
-    print(
-        "\n[PASS] Verdict artifact verified: package hash, changed-file hashes, and "
-        "5 evidenced leaves all match this checkout."
-    )
-    return EXIT_PASS
+    if args.rerun_checks:
+        print("[i] Re-running preflight; tests/build/device evidence must also be current.")
+        env = os.environ.copy()
+        env["HARNESS_REPO"] = str(repo)
+        proc = subprocess.run([sys.executable, str(scripts / "preflight_check.py")], env=env, cwd=repo)
+        if proc.returncode:
+            return proc.returncode
+    env = os.environ.copy()
+    env["HARNESS_REPO"] = str(repo)
+    return subprocess.run([sys.executable, str(scripts / "final_verdict.py"), "--json"], env=env, cwd=repo).returncode
 
 
 def build_parser() -> argparse.ArgumentParser:

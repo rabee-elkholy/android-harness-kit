@@ -24,6 +24,7 @@ from _env_codes import (  # noqa: E402
 )
 from _gate_results import (  # noqa: E402
     current_head_sha,
+    GateRun,
     gate_artifact_name,
     write_gate_result,
 )
@@ -31,7 +32,8 @@ from _live_process import enable_line_buffered_stdio, live_print, run_streaming 
 from _variants import resolve_or_raise  # noqa: E402
 from gradle_error_parser import format_errors, parse_compiler_errors  # noqa: E402
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from _repo_files import REPO as REPO_ROOT
+LAST_RESULT: dict = {}
 
 SUPPRESSED_PATTERNS = [
     re.compile(r"^> Task :.*UP-TO-DATE"),
@@ -95,7 +97,18 @@ def unix_wrapper_cmd(wrapper: Path, gradle_args: list[str]) -> list[str]:
     return [str(wrapper), *gradle_args]
 
 
+def execution_lock():
+    from _evidence import locked
+    root = REPO_ROOT / (".agents" if (REPO_ROOT / ".agents").is_dir() else "agents")
+    return locked(root / "state" / "gradle-execution.lock", timeout=60.0)
+
+
 def run_gradle(task_args: list[str]) -> int:
+    with execution_lock():
+        return _run_gradle(task_args)
+
+
+def _run_gradle(task_args: list[str]) -> int:
     enable_line_buffered_stdio()
     try:
         from _hook_state import review_advisory
@@ -105,20 +118,42 @@ def run_gradle(task_args: list[str]) -> int:
             live_print(advisory)
     except Exception:
         pass
+    global LAST_RESULT
+    LAST_RESULT = {}
+    allowed_flags = {"--console=plain", "--stacktrace", "--info", "--warn", "--quiet", "--rerun-tasks", "--no-build-cache", "--no-daemon"}
+    if not task_args or any(not re.fullmatch(r"(?::[A-Za-z0-9_.-]+)+", arg) and arg not in allowed_flags for arg in task_args):
+        live_print("[FAIL] Use qualified tasks and supported diagnostic flags; execution-context/property overrides are not delivery evidence", err=True)
+        return 1
     gradle_args = with_plain_console(task_args)
-    task_label = task_args[0] if task_args else "gradle"
+    tasks = [a for a in task_args if a.startswith(":")]
+    task_label = tasks[0] if tasks else (task_args[0] if task_args else "gradle")
     artifact_name = gate_artifact_name(task_label)
 
-    def record(status: str, exit_code: int, env_class: str = "", detail: str = "") -> None:
-        write_gate_result(artifact_name, {
-            "schema_version": 1,
-            "task": task_label,
-            "status": status,
-            "exit_code": exit_code,
-            "env_class": env_class,
-            "git_sha": current_head_sha(),
-            "detail": detail,
+    gate = GateRun(artifact_name)
+    raw_log = ""
+
+    def record(status: str, exit_code: int, env_class: str = "", detail: str = "") -> dict:
+        global LAST_RESULT
+        apks = {}
+        if status == "PASS" and any("assemble" in arg.lower() for arg in task_args):
+            from _variants import apk_relative, known_flavors, assemble_task
+            from _snapshot import file_digest
+            flavor = next((f for f in known_flavors() if assemble_task(f) == task_label), None)
+            apk = REPO_ROOT / apk_relative(flavor)
+            if apk.is_file():
+                apks[apk.relative_to(REPO_ROOT).as_posix()] = file_digest(apk, REPO_ROOT)
+        LAST_RESULT = gate.finish({
+            "task": task_label, "gradle_tasks": tasks, "arguments": task_args,
+            "status": status, "exit_code": exit_code, "env_class": env_class,
+            "detail": detail, "apks": apks,
+            "test_assertion_failure": bool(
+                status == "FAIL" and "There were failing tests" in raw_log
+                and not parse_compiler_errors(raw_log)
+                and all("test" in name.lower() for name in re.findall(r"^> Task (\S+) FAILED", raw_log, re.M))
+                and re.search(r"^> Task " + re.escape(task_label) + r" FAILED", raw_log, re.M)
+            ),
         })
+        return LAST_RESULT
 
     try:
         wrapper = gradle_wrapper()
@@ -170,7 +205,10 @@ def run_gradle(task_args: list[str]) -> int:
         record("FAIL", code, verdict.env_class, verdict.reason)
 
     if code == 0:
-        record("PASS", 0)
+        result = record("PASS", 0)
+        if result["status"] != "PASS":
+            live_print(result["detail"], err=True)
+            return 1
         hint = _duration_hint(raw_log)
         if hint == "done":
             hint = f"{time.time() - started:.1f}s"

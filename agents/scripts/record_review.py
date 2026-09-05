@@ -76,101 +76,48 @@ def record_leaf_verdict(
     verdict: str,
     cites: int = 1,
     findings: list[str] | None = None,
+    report: dict | None = None,
 ) -> bool:
-    record = read_verdict_record(pkg12)
-    if not record:
-        record = {
-            "schema_version": 1,
-            "package_hash": pkg12,
-            "created_at": time.time(),
-            "status": "PENDING",
-            "leaves": {},
-            "findings": [],
-            "contains_tests": False,
-        }
-
-    leaves = record.setdefault("leaves", {})
-    leaves[leaf_canonical] = {
-        "verdict": verdict,
-        "token": verdict,
-        "cites": cites,
-        "recorded_at": time.time(),
-    }
-    if findings:
-        for f in findings:
-            record.setdefault("findings", []).append(f)
-
-    # Check if all required leaves have passed
-    has_tests = bool(record.get("contains_tests"))
-    required = ["bug_reviewer", "convention_reviewer", "security_reviewer", "perf_guardian", "regression_reviewer"]
-    if has_tests:
-        required.append("test_quality")
-
-    all_passed = all(
-        leaves.get(k, {}).get("verdict") == PASS_TOKENS.get(k)
-        for k in required
-    )
-
-    if all_passed:
-        record["verdict"] = "APPROVED"
-        record["completed_at"] = time.time()
-        record["tree_fingerprint"] = tree_code_fingerprint()
-        live_print(f"[*] All {len(required)} leaves APPROVED for package {pkg12}!")
-    else:
-        passed_count = sum(1 for k in required if leaves.get(k, {}).get("verdict") == PASS_TOKENS.get(k))
-        live_print(f"[*] Recorded {leaf_canonical} -> {verdict} ({passed_count}/{len(required)} leaves passed).")
-
-    return write_verdict_record(pkg12, record)
+    from _review_contract import package_valid, required_keys
+    from _evidence import locked
+    with locked(state_path().parent / ("record-" + pkg12 + ".lock")):
+        record = read_verdict_record(pkg12)
+        if not record or not package_valid(record):
+            live_print("[REFUSED] Missing, stale or incomplete review package", err=True)
+            return False
+        if not report or not isinstance(report.get("summary"), str) or not report["summary"].strip():
+            live_print("[REFUSED] A structured reviewer report is required", err=True)
+            return False
+        if report.get("package_hash") != record["package"]["sha256"] or report.get("snapshot_id") != record["snapshot_id"]:
+            return False
+        supplied_findings = report.get("findings", [])
+        if not isinstance(supplied_findings, list) or not all(isinstance(f, str) and f.strip() for f in supplied_findings):
+            return False
+        report = dict(report, findings=supplied_findings + list(findings or []))
+        reviewed = report.get("reviewed_files")
+        if not isinstance(reviewed, list) or not reviewed or not all(isinstance(f, str) and f in record.get("files", {}) for f in reviewed):
+            return False
+        if verdict not in (PASS_TOKENS[leaf_canonical], "FAIL"):
+            return False
+        leaves = record.setdefault("leaves", {})
+        leaves[leaf_canonical] = {"verdict": verdict, "token": verdict, "report": report,
+                                  "attestation": "self_reported", "recorded_at": time.time()}
+        record["findings"] = [f for leaf in leaves.values() for f in leaf.get("report", {}).get("findings", [])]
+        required = required_keys(record)
+        all_passed = not record["findings"] and all(leaves.get(k, {}).get("token") == PASS_TOKENS[k] for k in required)
+        record["verdict"] = "APPROVED" if all_passed else "PENDING"
+        record["completed_at"] = time.time() if all_passed else None
+        return write_verdict_record(pkg12, record)
 
 
 def approve_all_leaves(pkg12: str) -> bool:
-    record = read_verdict_record(pkg12)
-    if not record:
-        record = {
-            "schema_version": 1,
-            "package_hash": pkg12,
-            "created_at": time.time(),
-            "status": "PENDING",
-            "leaves": {},
-            "findings": [],
-            "contains_tests": False,
-        }
-
-    has_tests = bool(record.get("contains_tests"))
-    required = ["bug_reviewer", "convention_reviewer", "security_reviewer", "perf_guardian", "regression_reviewer"]
-    if has_tests:
-        required.append("test_quality")
-
-    leaves = record.setdefault("leaves", {})
-    now = time.time()
-    for k in required:
-        token = PASS_TOKENS[k]
-        leaves[k] = {
-            "verdict": token,
-            "token": token,
-            "cites": 2,
-            "recorded_at": now,
-        }
-
-    record["verdict"] = "APPROVED"
-    record["completed_at"] = now
-    record["tree_fingerprint"] = tree_code_fingerprint()
-    ok = write_verdict_record(pkg12, record)
-    if ok:
-        live_print(f"[SUCCESS] Package {pkg12}: all {len(required)} review leaves APPROVED.")
-    return ok
+    live_print("[REFUSED] Bulk approval cannot establish independent reviews; submit each structured --report", err=True)
+    return False
 
 
 def parse_and_record_text(pkg12: str, text: str) -> int:
-    recorded = 0
-    for leaf_canon, token in PASS_TOKENS.items():
-        if re.search(rf"\b{token}\b", text):
-            # Check for cites
-            cite_match = re.search(rf"{token}[^\n\r]*?cites=(\d+)", text, re.IGNORECASE)
-            cites = int(cite_match.group(1)) if cite_match else 1
-            if record_leaf_verdict(pkg12, leaf_canon, token, cites):
-                recorded += 1
-    return recorded
+    live_print("[REFUSED] Free-text PASS tokens are not review evidence; use --report", err=True)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -182,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cites", type=int, default=1, help="Citations count.")
     parser.add_argument("--parse-text", help="Path to file or string containing review output.")
     parser.add_argument("--stdin", action="store_true", help="Read review output from stdin.")
+    parser.add_argument("--report", type=Path, help="Structured JSON reviewer report")
     parser.add_argument("--finding", action="append", default=[], help="Finding description.")
     args = parser.parse_args(argv)
 
@@ -195,6 +143,10 @@ def main(argv: list[str] | None = None) -> int:
         pkg12 = hashlib.sha256(candidate_file.read_bytes()).hexdigest()[:12]
     else:
         pkg12 = raw_pkg[:12]
+
+    if not re.fullmatch(r"[0-9a-f]{12}", pkg12):
+        live_print("[REFUSED] Invalid package digest", err=True)
+        return 1
 
     if args.approve_all:
         ok = approve_all_leaves(pkg12)
@@ -218,7 +170,8 @@ def main(argv: list[str] | None = None) -> int:
         if not leaf_canon:
             live_print(f"[ERROR] Unknown leaf name: '{args.leaf}'", err=True)
             return 1
-        ok = record_leaf_verdict(pkg12, leaf_canon, args.verdict.strip(), args.cites, findings=args.finding)
+        ok = record_leaf_verdict(pkg12, leaf_canon, args.verdict.strip(), args.cites, findings=args.finding,
+                                 report=json.loads(args.report.read_text(encoding="utf-8")) if args.report else None)
         return 0 if ok else 1
 
     parser.print_help()

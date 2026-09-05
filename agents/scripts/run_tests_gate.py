@@ -66,75 +66,30 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     from baseline_capture import _unit_test_task
-    from run_gradle_task import run_gradle
-
+    from _gate_results import GateRun
+    from _test_reports import execute_tests
+    import xml.etree.ElementTree as ET
     task = args.task or _unit_test_task()
-    live_print(f"[*] Unit-test gate: {task}")
-    code = run_gradle([task])
-    if code != 0:
-        status = "ENV" if code == EXIT_ENV else "FAIL"
-        write_gate_result("unit_tests", {
-            "schema_version": 1,
-            "status": status,
-            "exit_code": code,
-            "env_class": "ENV" if code == EXIT_ENV else "",
-            "git_sha": current_head_sha(),
-            "detail": "unit-test Gradle run failed; see gradle log",
-        })
-        live_print(f"[FAIL] Unit-test gate blocked: gradle exited {code} ({status}).", err=True)
-        return code
-
-    head = current_head_sha()
-    baseline = load_baseline()
-    advisory = baseline_advisory(baseline, head)
-    if advisory:
-        live_print(advisory, err=True)
-
-    failed = collect_failures(REPO)
-    if not failed and not baseline:
-        write_gate_result("unit_tests", {
-            "schema_version": 1,
-            "status": "PASS",
-            "exit_code": 0,
-            "env_class": "",
-            "git_sha": head,
-            "detail": "no failing tests in the parsed reports",
-        })
-        live_print("[SUCCESS] Unit-test gate passed: no failures, no baseline.")
-        return 0
-
-    new_regressions, ignored, baseline_size = classify_failures(failed, baseline)
-    if new_regressions:
-        live_print(f"[FAIL] NEW_REGRESSION: {len(new_regressions)} test(s) failed that are absent from the baseline:", err=True)
-        for item in new_regressions[:30]:
-            live_print(f"  - {item['test_name']}  ({str(item.get('message') or '')[:120]})", err=True)
-        if len(new_regressions) > 30:
-            live_print(f"  ... and {len(new_regressions) - 30} more", err=True)
-        write_gate_result("unit_tests", {
-            "schema_version": 1,
-            "status": "FAIL",
-            "exit_code": 1,
-            "env_class": "",
-            "git_sha": head,
-            "detail": f"{len(new_regressions)} NEW_REGRESSION failure(s)",
-            "new_regressions": [item["test_name"] for item in new_regressions],
-            "baseline_ignored": len(ignored),
-            "total_failed": len(failed),
-        })
+    gate = GateRun("unit_tests")
+    try:
+        code, run, reports = execute_tests(REPO, task)
+        if not reports:
+            gate.finish({"status": "ENV" if code == EXIT_ENV else "FAIL", "exit_code": code,
+                         "task": task, "detail": run.get("detail", "Test execution incomplete")})
+            return code or 1
+        baseline = load_baseline()
+        if baseline and baseline.get("schema_version") != 2:
+            raise ValueError("Legacy baseline must be recaptured on a clean checkout with --approve")
+        new, ignored, _ = classify_failures(reports["failures"], baseline)
+        result = gate.finish({"status": "FAIL" if new else "PASS", "exit_code": 1 if new else 0,
+                              "task": task, "detail": f"{len(new)} NEW_REGRESSION; {len(ignored)} BASELINE_IGNORED",
+                              "baseline_ignored": len(ignored), "reports": reports})
+        live_print(result["detail"])
+        return result["exit_code"]
+    except (ValueError, OSError, RuntimeError, ET.ParseError) as exc:
+        gate.finish({"status": "FAIL", "exit_code": 1, "task": task, "detail": str(exc)})
+        live_print(f"[FAIL] {exc}", err=True)
         return 1
-
-    write_gate_result("unit_tests", {
-        "schema_version": 1,
-        "status": "PASS",
-        "exit_code": 0,
-        "env_class": "",
-        "git_sha": head,
-        "detail": f"{len(ignored)} pre-existing failure(s) ignored via baseline ({baseline_size} known)",
-        "baseline_ignored": len(ignored),
-        "total_failed": len(failed),
-    })
-    live_print(f"[SUCCESS] Unit-test gate passed: {len(ignored)} failure(s) ignored via baseline, 0 new regressions.")
-    return 0
 
 
 if __name__ == "__main__":

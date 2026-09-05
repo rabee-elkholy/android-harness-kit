@@ -137,7 +137,9 @@ def test_collect_failures_dedup() -> None:
 
 
 def test_load_baseline() -> None:
-    path = state_path().with_name("baseline.json")
+    from baseline_capture import baseline_path
+    os.environ["HARNESS_BASELINE_PATH"] = str(state_path().with_name("baseline.json"))
+    path = baseline_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('{"schema_version": 1, "unit_tests": [{"test_name": "A#a", "fingerprint": "1"}]}', encoding="utf-8")
     data = load_baseline()

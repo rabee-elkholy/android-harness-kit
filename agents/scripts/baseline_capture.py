@@ -33,7 +33,7 @@ from _gate_results import current_head_sha  # noqa: E402
 from _live_process import enable_line_buffered_stdio, live_print  # noqa: E402
 from _repo_files import REPO, has_non_doc_code_changes  # noqa: E402
 
-BASELINE_SCHEMA = 1
+BASELINE_SCHEMA = 2
 
 
 def _unit_test_task() -> str:
@@ -113,7 +113,11 @@ def collect_failures(repo: Path) -> list[dict]:
 def baseline_path() -> Path:
     from _hook_state import state_path
 
-    return state_path().with_name("baseline.json")
+    override = os.environ.get("HARNESS_BASELINE_PATH")
+    if override:
+        return Path(override)
+    root = REPO / (".agents" if (REPO / ".agents").is_dir() else "agents")
+    return root / "state" / "baseline.json"
 
 
 def write_baseline(data: dict) -> Path | None:
@@ -165,19 +169,25 @@ def main(argv=None) -> int:
         )
         return 1
 
-    if args.run_tests:
-        task = _unit_test_task()
-        live_print(f"[*] Running {task} before capturing the baseline...")
-        from run_gradle_task import run_gradle
-
-        code = run_gradle([task])
-        if code != 0:
-            live_print(f"[REFUSED] Unit tests did not pass (exit {code}); baseline not captured.", err=True)
-            return code
-
     head = current_head_sha()
-    entries = collect_failures(REPO)
-    reports = find_test_reports(REPO)
+    if not head:
+        live_print("[REFUSED] Baseline capture requires a Git HEAD", err=True)
+        return 1
+    # Always execute: historical reports cannot establish pre-existing failures.
+    from _test_reports import execute_tests
+    import xml.etree.ElementTree as ET
+    try:
+        code, result, report = execute_tests(REPO, _unit_test_task())
+        if not report:
+            live_print("[REFUSED] Test execution did not produce valid assertion reports", err=True)
+            return code or 1
+        if has_non_doc_code_changes() or head != current_head_sha():
+            raise ValueError("Checkout changed during baseline capture")
+        entries = report["failures"]
+        reports = report["reports"]
+    except (OSError, ValueError, RuntimeError, ET.ParseError) as exc:
+        live_print(f"[REFUSED] {exc}", err=True)
+        return 1
     baseline = {
         "schema_version": BASELINE_SCHEMA,
         "project": _project_name(),

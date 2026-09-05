@@ -37,22 +37,10 @@ py-modules = ["harness_cli"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["agents*"]
+exclude = ["agents.state*", "agents.cache*", "*.__pycache__*"]
 
 [tool.setuptools.package-data]
-"*" = [
-    "agents/VERSION",
-    "agents/hooks.json",
-    "agents/mcp_config.json",
-    "agents/command-packs/*",
-    "agents/mcp/**/*",
-    "agents/pm/*",
-    "agents/rules/*",
-    "agents/scripts/**/*",
-    "agents/skills/**/*",
-    "agents/subagents/*",
-    "agents/workflows/*",
-    "docs/**/*",
-    "LICENSE",
-    "README.md"
-]
+agents = ["VERSION", "*.json", "*.md", "command-packs/*", "pm/*", "rules/*", "scripts/**/*", "skills/**/*", "subagents/*", "workflows/*", "mcp/**/*", "tool-adapters/**/*"]
 
+[tool.setuptools.exclude-package-data]
+"*" = ["**/__pycache__/*", "**/*.pyc", "state/*", "state/**/*", "cache/*", "cache/**/*"]

@@ -43,6 +43,9 @@ def test_environment_detection() -> int:
     del os.environ["HARNESS_TEST_ENV"]
     failed += _case("detection_test_override", p_cur.env == AssistantEnv.CURSOR)
 
+    # Isolate inherited host identity before testing another platform's payload.
+    for key in ("CODEX_CLI", "CODEX_SESSION_ID", "CLAUDE_CODE", "CLAUDE_CLI", "CLAUDE_SESSION_ID", "CURSOR_AGENT", "CURSOR_WORKSPACE", "VSCODE_GIT_ASKPASS_NODE"):
+        os.environ.pop(key, None)
     # 2. Antigravity via payload
     env_mod._CACHED_PROFILE = None
     p_ag = env_mod.detect_runtime_profile({"transcriptPath": "C:/fake/transcript.jsonl"})
@@ -97,37 +100,12 @@ def test_record_review_bridge() -> int:
         env=env,
     )
     verdict_file = tmp_dir / "verdicts" / f"verdict-{pkg_hash}.json"
-    ok_verdict = verdict_file.is_file()
-    if ok_verdict:
-        v_data = json.loads(verdict_file.read_text(encoding="utf-8"))
-        leaves = v_data.get("leaves", {})
-        ok_verdict = len(leaves) >= 5 and all("PASS" in str(l.get("verdict", "")) for l in leaves.values())
-
-    failed += _case("record_review_approve_all", proc.returncode == 0 and ok_verdict)
-
-    # 2. Record single leaf with findings
+    failed += _case("record_review_bulk_approval_refused", proc.returncode != 0 and not verdict_file.exists())
     proc_leaf = subprocess.run(
-        [
-            sys.executable,
-            str(RECORD_REVIEW),
-            "--pkg",
-            str(pkg_file),
-            "--leaf",
-            "convention-reviewer-agent",
-            "--verdict",
-            "FINDINGS",
-            "--finding",
-            "ViewModel directly references MutableStateFlow",
-        ],
-        capture_output=True,
-        text=True,
-        env=env,
+        [sys.executable, str(RECORD_REVIEW), "--pkg", str(pkg_file), "--leaf", "bug", "--verdict", "BUG_PASS"],
+        capture_output=True, text=True, env=env,
     )
-    v_data2 = json.loads(verdict_file.read_text(encoding="utf-8"))
-    leaves2 = v_data2.get("leaves", {})
-    leaf_rec = leaves2.get("convention_reviewer") or leaves2.get("convention-reviewer-agent") or {}
-    ok_leaf = leaf_rec.get("verdict") == "FINDINGS" and len(v_data2.get("findings", [])) > 0
-    failed += _case("record_review_single_leaf_finding", proc_leaf.returncode == 0 and ok_leaf)
+    failed += _case("record_review_unbound_leaf_refused", proc_leaf.returncode != 0 and not verdict_file.exists())
 
     return failed
 

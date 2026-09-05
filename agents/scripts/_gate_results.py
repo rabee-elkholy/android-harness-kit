@@ -1,85 +1,77 @@
-"""Unified gate-result artifacts consumed by final_verdict.py.
-
-Every delivery-gate script writes a small machine-readable result JSON into
-<state>/results/<name>.json (atomic write, corruption-safe reads). The latest
-run wins per gate name; Gradle results are keyed per task (gradle-<task>).
-"""
+"""Run-scoped gate results. Missing/legacy/stale artifacts never prove success."""
 from __future__ import annotations
 
 import json
 import os
 import re
-import subprocess
+import time
 from pathlib import Path
+
+from _evidence import atomic_json, context, locked, matches, new_run, task_key
 
 
 def results_dir() -> Path:
-    override = os.environ.get("HARNESS_RESULTS_DIR")
+    override = os.environ.get('HARNESS_RESULTS_DIR')
     if override:
         return Path(override)
-    here = Path(__file__).resolve().parent
-    return here.parent / "state" / "results"
+    from _repo_files import REPO
+    root = REPO / ('.agents' if (REPO / '.agents').is_dir() else 'agents') / 'state'
+    return root / 'tasks' / task_key() / 'results'
 
 
-def write_gate_result(
-    name: str,
-    data: dict,
-    *,
-    results_dir_override: Path | None = None,
-) -> Path | None:
+def write_gate_result(name: str, data: dict, *, results_dir_override: Path | None = None) -> Path:
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', name):
+        raise ValueError('Invalid gate artifact name')
+    directory = results_dir_override or results_dir()
+    return atomic_json(directory / f'{name}.json', data)
+
+
+def read_gate_result(name: str, *, results_dir_override: Path | None = None) -> dict | None:
     directory = results_dir_override or results_dir()
     try:
-        directory.mkdir(parents=True, exist_ok=True)
-        target = directory / f"{name}.json"
-        tmp = target.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
-        os.replace(tmp, target)
-        return target
-    except Exception:
-        return None
-
-
-def read_gate_result(
-    name: str,
-    *,
-    results_dir_override: Path | None = None,
-) -> dict | None:
-    directory = results_dir_override or results_dir()
-    try:
-        path = directory / f"{name}.json"
-        if not path.is_file():
-            return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads((directory / f'{name}.json').read_text(encoding='utf-8'))
         return data if isinstance(data, dict) else None
-    except Exception:
+    except (OSError, ValueError):
         return None
+
+
+class GateRun:
+    def __init__(self, name: str):
+        self.name = name
+        self.identity = new_run()
+        self.directory = results_dir()
+        with locked(self.directory / (name + '.lock')):
+            write_gate_result(name, self.identity | {'status': 'RUNNING', 'exit_code': None},
+                              results_dir_override=self.directory)
+
+    def finish(self, data: dict) -> dict:
+        record = data | self.identity | {'finished_at': time.time()}
+        if not matches(self.identity, context()):
+            record.update(status='STALE', exit_code=1, detail='Inputs changed during gate execution; rerun')
+        with locked(self.directory / (self.name + '.lock')):
+            latest = read_gate_result(self.name, results_dir_override=self.directory)
+            if not latest or latest.get('run_id') != self.identity['run_id']:
+                record.update(status='STALE', exit_code=1, detail='A newer gate run superseded this run')
+                return record
+            write_gate_result(self.name, record, results_dir_override=self.directory)
+        return record
 
 
 def sanitize_task(task: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", str(task).strip().strip(":")).strip("-")
-    return cleaned.lower()[:80] or "gradle"
+    cleaned = re.sub(r'[^A-Za-z0-9]+', '-', str(task).strip().strip(':')).strip('-')
+    return cleaned.lower()[:80] or 'gradle'
 
 
 def gate_artifact_name(task: str) -> str:
-    return f"gradle-{sanitize_task(task)}"
+    # Preserve familiar names while preventing truncation/case/punctuation collisions.
+    import hashlib
+    return f'gradle-{sanitize_task(task)}-{hashlib.sha256(task.encode()).hexdigest()[:10]}'
 
 
 def current_head_sha() -> str:
+    from _repo_files import REPO
+    from _snapshot import git_bytes
     try:
-        from _repo_files import REPO
-
-        proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(REPO),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        out = (proc.stdout or "").strip()
-        return out if re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", out) else ""
-    except Exception:
-        return ""
+        return git_bytes(REPO, 'rev-parse', '--verify', 'HEAD').decode('ascii').strip()
+    except (RuntimeError, OSError):
+        return ''
