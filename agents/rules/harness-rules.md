@@ -361,14 +361,18 @@ Helpers: `python .agents/scripts/capture_screen.py` and `python .agents/scripts/
     * The agent must wait for the developer to connect a device or explicitly grant permission to proceed.
 
 - **Device Verification Mode (`manual_only` / `interactive_device` - Default)**:
-  1. Live Device Install & Launch: `python .agents/scripts/run_device.py install-start` (installs and launches the target screen on the connected phone).
+  1. Live Device Install & Launch: `python .agents/scripts/run_device.py install-start` (Execute strictly once; deduplicate install calls; never run raw adb install).
   2. If no device is connected, HALT and prompt the developer; never silently skip device verification.
-  3. Output the **Phase Milestone Card** with 2-3 **diff-grounded** numbered manual test steps explaining what to verify on screen (strictly derived from the modified code: 1. Navigation, 2. Interaction, 3. Expected visual/functional result), and the drafted Phase N commit message.
-  4. Trigger interactive confirmation via `ask_question`:
-     - **Question**: "Please test the steps above on your device and confirm the result:"
-     - **Options**: `PASS — Device testing passed successfully` / `FAIL — Issue or crash encountered on device`.
-  5. Upon **PASS**, wait for the developer to commit Phase N and give the green light for Phase N+1 (or deliver the commit message for single-phase tasks).
-  6. Upon **FAIL**, investigate logs with `python .agents/scripts/logcat_doctor.py` and fix the defect.
+  3. **Sequential Step-by-Step Verification (One-by-One)**: Decompose manual verification into focused, diff-grounded numbered steps (flexible: 2 to 3 steps, or up to 4-5 if spanning multiple screens).
+  4. **Anti-Empty-Modal & In-Modal Embedding**: Never dump all steps at once into a single question. Verify steps **one by one**:
+     - For Step `i` of `N`, trigger `ask_question` individually.
+     - The question text inside `ask_question` MUST explicitly embed the step index, target screen, specific action, and expected result: `[Step i of N: <Screen/Feature>] <Action and expected result>. Did this step pass on your device?`.
+     - **Strict Conversation Language Matching**: The modal question text and selectable options MUST strictly match the active conversation language that the developer is speaking in the chat (e.g., Arabic if chatting in Arabic, English if chatting in English).
+     - Modal options format: `PASS — <Step verified successfully>` / `FAIL — <Issue or defect encountered>`.
+     - On **PASS**: Proceed to Step `i+1`.
+     - On **FAIL**: Halt verification immediately, capture the developer's write-in explanation, run `python .agents/scripts/logcat_doctor.py` if a crash/exception occurred, fix the code, and re-verify.
+  5. After all steps pass: Record verification via `record_device_verification.py`, output the **Phase Milestone Card** with the drafted Phase N commit message, and wait for developer commit.
+  6. **Technical Terms Bidi Hygiene**: All technical terms (`APK`, `ADB`, `USB`, file paths like `app/build/...`, commands) MUST be enclosed in code backticks (`` `...` ``) to prevent bidirectional text scrambling when chatting in RTL languages.
 
 - **Phase Milestone Card Requirements**:
   1. Scope & Changes.

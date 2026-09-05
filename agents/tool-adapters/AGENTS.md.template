@@ -28,13 +28,19 @@ After non-trivial implementation:
 5. Do **not** treat a single self-review as the gate. Do not invoke `code-review-guard-agent`. Do not wait for `LGTM`.
 6. `{{PY}} .agents/scripts/preflight_check.py` (Mandatory Preflight Gate: must pass with 0 errors before assemble — never assemble if `[FAIL]`)
 7. `{{PY}} .agents/scripts/run_gradle_task.py {{ASSEMBLE}}`
-8. **Device Verification & Interactive Manual Sign-off**:
-   - `{{PY}} .agents/scripts/run_device.py install-start` (Installs and launches the target Activity/Screen on the connected device).
+8. **Device Verification & Sequential Interactive Sign-off (Step-by-Step)**:
+   - `{{PY}} .agents/scripts/run_device.py install-start` (Execute strictly once; deduplicate install calls; never run raw adb install).
    - If no device is connected, HALT and prompt the developer; never silently skip device verification.
-   - The agent writes 2-3 diff-grounded numbered manual test steps in chat explaining what to check on screen (1. Navigation, 2. Interaction matching the diff, 3. Expected visual/functional result).
-   - The agent triggers the interactive confirmation modal (`ask_question`): *"Please test the steps above on your device and confirm the result:"* with options `PASS — Device testing passed successfully` / `FAIL — Issue or crash encountered on device`.
-   - On **PASS**: Output the Phase Milestone / Final Delivery Card with the drafted Conventional Commit message.
-   - On **FAIL**: Investigate with `{{PY}} .agents/scripts/logcat_doctor.py` and fix the defect.
+   - **Step-by-Step Sequential Verification (One-by-One)**: Decompose manual verification into focused, diff-grounded numbered steps (flexible: 2 to 3 steps, or up to 4-5 if spanning multiple screens).
+   - **Anti-Empty-Modal & In-Modal Embedding**: Never dump all steps at once into a single question. Verify steps **one by one**:
+     * For Step `i` of `N`, trigger `ask_question` individually.
+     * The question text inside `ask_question` MUST explicitly embed the step index, target screen, specific action, and expected result: `[Step i of N: <Screen/Feature>] <Action and expected result>. Did this step pass on your device?`.
+     * **Strict Conversation Language Matching**: The modal question text and selectable options MUST strictly match the active conversation language that the developer is speaking in the chat (e.g., Arabic if chatting in Arabic, English if chatting in English).
+     * Modal options format: `PASS — <Step verified successfully>` / `FAIL — <Issue or defect encountered>`.
+     * On **PASS**: Proceed to Step `i+1`.
+     * On **FAIL**: Halt verification immediately, capture the developer's write-in explanation, run `{{PY}} .agents/scripts/logcat_doctor.py` if a crash/exception occurred, fix the code, and re-verify.
+   - After all steps pass: Record verification via `record_device_verification.py` and output the Phase Milestone / Final Delivery Card with the drafted Conventional Commit message.
+   - **Technical Terms Bidi Hygiene**: All technical terms (`APK`, `ADB`, `USB`, file paths like `app/build/...`, commands) MUST be enclosed in code backticks (`` `...` ``) to prevent bidirectional text scrambling when chatting in RTL languages.
 9. **Exit-code protocol**: exit `1` = code failure (fix the code). Exit `30` / `[ENV-FAILURE]` marker = environment or ambiguous failure — HALT immediately, never modify code/Gradle/manifest to bypass, report the reason to the developer (details in `.agents/state/env_failure.json`).
 10. **Round cap**: review rounds are counted per task (`.agents/state/review_rounds.json`, reset when HEAD moves). At the cap (3) `review_package.py` prints a `REVIEW ROUND CAP` warning — output a Review Round Summary Card and ask the developer: continue / rollback / stop. Never silently loop.
 11. **Final verdict**: after all gates, run `{{PY}} .agents/scripts/final_verdict.py` — it aggregates every gate artifact and the 5-leaf verdict into `.agents/state/last_verdict.json` (`APPROVED` required before delivery; `ENV_BLOCKED` follows the exit-30 halt protocol; `STALE` means code changed after review — regenerate the package).
