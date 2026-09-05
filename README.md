@@ -98,17 +98,18 @@ The **Android Agent Harness** solves this with an integrated, pre-warmed **Unive
 
 ---
 
-## The 6 Parallel Quality Guardians
+## Dynamic Quality Guardians & Bounded Review Batches
 
-Before `:app:assembleDebug` or device deployment, 6 specialized subagents review the immutable snapshot in parallel:
+Before `:app:assembleDebug` or device deployment, specialized subagents review the content-addressed snapshot in parallel or bounded batches:
 
 ```text
-                            +---> [bug-reviewer-agent]              ---> BUG_PASS
-                            +---> [convention-reviewer-agent]       ---> CONVENTION_PASS
-[Review Package (SHA-256)] -+---> [security-reviewer-agent]         ---> SECURITY_PASS
-                            +---> [perf-anr-guardian-agent]         ---> PERF_PASS
-                            +---> [regression-impact-reviewer-agent] ---> REGRESSION_PASS
-                            +---> [test-quality-reviewer-agent]     ---> TEST_PASS (Smart Test Promotion)
+                            +---> [bug-reviewer-agent]              ---> BUG_PASS (Required)
+                            +---> [convention-reviewer-agent]       ---> CONVENTION_PASS (Required)
+[Review Package (SHA-256)] -+---> [security-reviewer-agent]         ---> SECURITY_PASS (Required)
+                            +---> [perf-anr-guardian-agent]         ---> PERF_PASS (Required)
+                            +---> [regression-impact-reviewer-agent] ---> REGRESSION_PASS (Required)
+                            +---> [test-quality-reviewer-agent]     ---> TEST_PASS (Auto-Routed on logic/build/tests)
+                            +---> [android-ui-expert-agent]         ---> UI_PASS (Auto-Routed on Compose/XML/drawables)
 ```
 
 1. **`bug-reviewer-agent`** (`BUG_PASS`): Logic bugs, Kotlin null-safety across Java boundaries, and coroutine cancellation leaks.
@@ -116,9 +117,11 @@ Before `:app:assembleDebug` or device deployment, 6 specialized subagents review
 3. **`security-reviewer-agent`** (`SECURITY_PASS`): OWASP Mobile Top 10, unexported components, and credential isolation.
 4. **`perf-anr-guardian-agent`** (`PERF_PASS`): ANR elimination, Main-thread I/O prevention, and Compose recomposition fluidity.
 5. **`regression-impact-reviewer-agent`** (`REGRESSION_PASS`): Blast radius analysis, caller graph impacts, and API signature changes.
-6. **`test-quality-reviewer-agent`** (`TEST_PASS`): **Smart Test Promotion** — automatically promoted on test/mock diffs to verify assertion depth and `runTest` dispatchers.
+6. **`test-quality-reviewer-agent`** (`TEST_PASS`): **Automatic Specialist Routing** — automatically activated for production code, build scripts, resources, or tests to verify assertion depth and `runTest` dispatchers.
+7. **`android-ui-expert-agent`** (`UI_PASS`): **Automatic Specialist Routing** — automatically activated whenever Compose UI, XML layouts, drawables, or themes are modified.
 
-*On-demand specialists:* `qa-diagnostics-agent` (Logcat crash forensics) & `android-ui-expert-agent` (Compose & RTL layouts).
+*Bounded Batches & Resilience:* Large reviewer rosters can be dispatched in bounded native batches for the same package hash, avoiding LLM context saturation while enforcing that 100% of required reports exist before build.
+*On-demand specialists:* `qa-diagnostics-agent` (Logcat crash forensics and ANR triage).
 
 ---
 
@@ -140,8 +143,10 @@ AI assistants frequently jump into implementation based on flawed assumptions ab
 Software that compiles is not necessarily software that works on mobile. The harness:
 1. Resolves connected physical devices via ADB (prioritizing physical devices over emulators).
 2. Builds and installs via `run_device.py install-start`, launching the target Activity directly.
-3. Generates **2 to 3 diff-grounded manual test steps** and triggers an interactive confirmation modal (`ask_question`):
+3. Cryptographically binds test execution to the exact built APK digest (`apk_sha256`).
+4. Generates **2 to 3 diff-grounded manual test steps** and triggers an interactive confirmation modal (`ask_question`):
    `PASS -- Device testing passed successfully` vs `FAIL -- Issue or crash encountered`.
+5. Records structured scenario verification via `record_device_verification.py`.
 
 ---
 
@@ -188,10 +193,10 @@ The harness automatically detects the host assistant environment at runtime (`_e
 
 ---
 
-## Evidence integrity update (unreleased)
+## Delivery Evidence Integrity & Schema-v3 Contract (v0.28.0)
 
-Delivery uses schema-v3 evidence bound to checkout, task, HEAD and input content.
-Changing inputs invalidates review, test, build and device evidence. Legacy results
+Delivery uses schema-v3 evidence bound to checkout, task, HEAD, and input content.
+Changing inputs invalidates review, test, build, and device evidence. Legacy results
 must be regenerated. `android-harness verify` validates the complete delivery;
 review-only files and bulk `--approve-all` cannot approve delivery.
 
