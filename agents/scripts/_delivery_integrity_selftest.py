@@ -236,7 +236,7 @@ class DeliveryTest(unittest.TestCase):
         self.assertFalse(_evidence.matches(before, _evidence.context()))
 
     def test_unicode_paths_and_rename_and_delete(self):
-        target = self.repo / 'اختبار -> space.kt'
+        target = self.repo / ('اختبار space.kt' if os.name == 'nt' else 'اختبار -> space.kt')
         self.src.rename(target)
         paths = _repo_files.changed_paths()
         self.assertIn(self.src, paths)
