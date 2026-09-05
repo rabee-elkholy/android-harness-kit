@@ -5,14 +5,26 @@ All notable changes to the **Android Agent Harness** will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.28.0] - 2026-09-06
 
-- Bind delivery evidence to content, checkout, task and run identity; invalidate stale and legacy results.
-- Unify CLI delivery verification with the final verdict and require structured reviewer reports.
-- Parse current task reports after assertion failures, preserving baseline debt without hiding build failures.
-- Separate installation, launch, smoke scenarios and developer sign-off with exact APK binding.
-- Reduce Room comment-only false positives and require exported schema coverage for persisted changes.
-- Stage engine updates, recover interrupted swaps and preserve baselines; validate distributions before publication.
+### Delivery Evidence Integrity, Additive Reviewer Routing & Review Resilience
+- **Content-Addressed Delivery Evidence & Cryptographic Snapshot Binding (`_snapshot.py`, `_evidence.py`, `EVIDENCE.md`)**:
+  - Bound all gate evidence and final delivery verdicts to content-addressed SHA-256 snapshots of checkout bytes, Git status, and HEAD.
+  - Automatically invalidated stale or re-used reviews across code modifications; post-review changes strictly require evidence regeneration.
+  - Prevented partial package bypasses, forged review footers, and discarded reviewer findings.
+- **Dynamic & Additive Specialist Routing (`_android_review_scope.py`, `_review_contract.py`)**:
+  - Automatically routes specialist reviewers based on diff topology: activates `android-ui-expert-agent` for UI/Compose/XML changes, and enforces `test-quality-reviewer-agent` for logic/build/test changes.
+  - Supports fail-closed additive domain policies via `.agents/review-policy.json` (no policy may remove base required reviewers).
+- **Bounded Native Review Batches & Resilience (`_review_batches.py`, `_report_evidence.py`)**:
+  - Enabled bounded review batches for large reviewer sets without risking LLM context limits or dropped subagents.
+  - Added OS-level atomic file locks to prevent concurrent race conditions during verdict recording.
+- **Device Scenario Verification Contract (`_device_evidence.py`, `record_device_verification.py`)**:
+  - Separated raw ADB installation from functional scenario verification; bound test execution to exact built APK digests and structured verification steps.
+- **Atomic Installer Transaction & Safe Reference Merging (`install_or_update.py`)**:
+  - Fixed client update overlay bug to preserve custom user reference guides while seamlessly incorporating new kit defaults.
+- **Cross-Platform Filesystem Hardening (`_delivery_integrity_selftest.py`)**:
+  - Hardened self-test suite for Windows NTFS compliance and character constraints.
+
 
 
 ## [0.27.12] - 2026-09-05
@@ -186,7 +198,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Application ID & Namespace Fallback Discovery (`wizard/discovery.py`)**:
   - Added `AndroidManifest.xml` package attribute fallback to ensure real package name is always discovered even when missing from Gradle DSL blocks.
 
-## [0.27.0] - 2026-09-02
+### 0.27.0 - 2026-09-02
 
 ### Maestro E2E Engine Integration, Harness Code Graph Indexing & Automated CLI Setup
 - **Harness Infrastructure Code Graph Indexing (`_graph_core.py`, `project_graph.py`)**:

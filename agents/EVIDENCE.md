@@ -1,7 +1,7 @@
-# Delivery evidence contract (unreleased)
+# Delivery evidence contract (schema-v3)
 
-This update changes the evidence schema, not the published package version.
-Do not reuse v0.27.12 verdicts. No new tag or PyPI release is created by this change.
+This update establishes the schema-v3 delivery contract.
+Do not reuse legacy verdicts.
 
 ## Identity and state
 
