@@ -55,17 +55,14 @@ Peak performance, 60/120 FPS rendering, zero ANRs, and low battery consumption a
 ## 4. Jetpack Compose Recomposition & Jank Optimization
 
 ### State Stability & Immutability
-- Always annotate state data classes with `@Immutable` or `@Stable` from `androidx.compose.runtime`:
-  ```kotlin
-  @Immutable
-  data class FeatureState(
-      val items: List<ItemModel> = emptyList()
-  )
-  ```
-- Use `ImmutableList` (from `kotlinx.collections.immutable`) or wrap `List<T>` to guarantee Compose compiler skips unnecessary recompositions.
+- Inspect actual stability and state observation before proposing annotations.
+- `@Stable` and `@Immutable` are compiler contracts; they do not make mutable data safe.
+  Prefer correct types and observable state. Missing annotations alone are not findings.
+- Diagnose and measure recomposition issues before claiming an improvement. Wrapping
+  a list does not by itself guarantee correctness or skipped recompositions.
 
 ### Allocations & Computations in Composables
-- **Never allocate objects inside `@Composable` functions without `remember`**:
+- **Remember expensive allocations when appropriate, with keys matching their dependencies**:
   ```kotlin
   // BAD: Creates new DateFormatter on every single frame recomposition
   val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())

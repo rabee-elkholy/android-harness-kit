@@ -15,6 +15,26 @@ Python-only kit changes. The Android delivery workflow below applies to installe
 client projects. Git operations on this kit are allowed when its maintainer asks.
 
 
+## Android reviewer routing and competency contract
+
+For installed Android clients, read the applicable rows of
+`skills/android-harness/references/android-competency-matrix.md` under the agents
+folder before implementation. Preserve project-specific architecture and locales.
+Record applicable scenarios, observed evidence and unverified limitations.
+
+The package's `REQUIRED_REVIEWERS` replaces fixed five/six counts in older examples.
+Five base reviewers remain required; production/build/resource changes also require
+`test_quality` (`TEST_PASS`), and detected UI changes require `ui_expert` (`UI_PASS`).
+The recorder, final verdict and native invocation hook enforce the same routing.
+Native invoke supports up to seven reviewers in one call. If the host cannot run
+that many, use its supported review execution with per-leaf structured recording;
+all reports must refer to the same package. Never label serial self-review independent.
+QA diagnostics is on-demand; add specialists when semantic impact exceeds detection.
+
+No fixed assertion quota, mandatory stability annotation, universal Arabic locale,
+or FPS guarantee establishes quality. Concrete contracts and evidence govern findings.
+This section takes precedence over older fixed-count and generic quality examples.
+
 ## Current delivery evidence contract
 
 For schema-v3 delivery, follow `agents/EVIDENCE.md` in the kit or `.agents/EVIDENCE.md` in an installed project.

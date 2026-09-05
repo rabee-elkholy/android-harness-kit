@@ -163,7 +163,6 @@ def _review_outcome(tree_fp: str | None) -> tuple[dict, dict, str, bool]:
         return check, leaves_map, stale, expired
     raw_leaves = record.get("leaves") or {}
     active_keys = required_keys(record)
-    has_tests = "test_quality" in active_keys
 
     for key in active_keys:
         leaves_map[key] = _pick_leaf(raw_leaves, key)
@@ -187,7 +186,7 @@ def _review_outcome(tree_fp: str | None) -> tuple[dict, dict, str, bool]:
         check["detail"] = "missing leaf verdicts: " + ", ".join(missing)
     else:
         check["status"] = "PASS"
-        leaf_desc = "6 leaves (Smart Test Promotion)" if has_tests else "5 leaves"
+        leaf_desc = f"{len(active_keys)} required reviewers"
         check["detail"] = f"{leaf_desc} APPROVED for package {pkg12}"
     fp_now = tree_fp
     if fp_now is not None:

@@ -21,7 +21,7 @@ def main():
 import harness_cli
 kit = Path(harness_cli.__file__).parent
 assert harness_cli._has_engine(kit), 'Installed wheel has no engine'
-for name in ['VERSION', 'EVIDENCE.md', 'tool-adapters/README.md', 'hooks.json', 'rules/harness-rules.md', 'subagents/bug-reviewer-agent.json', 'scripts/final_verdict.py']:
+for name in ['VERSION', 'EVIDENCE.md', 'tool-adapters/README.md', 'hooks.json', 'rules/harness-rules.md', 'subagents/bug-reviewer-agent.json', 'scripts/final_verdict.py', 'scripts/_android_review_scope.py', 'skills/android-harness/references/android-competency-matrix.md']:
  assert (kit / 'agents' / name).is_file(), name
 import sys, json, subprocess
 sys.path.insert(0, str(kit / 'agents/scripts'))
@@ -37,6 +37,8 @@ result = execute_install_or_update(repo=repo, kit=kit, answers_path=str(answers)
 assert result['success']
 assert (repo / '.agents/EVIDENCE.md').is_file()
 assert (repo / '.agents/scripts/_product.py').is_file()
+assert (repo / '.agents/scripts/_android_review_scope.py').is_file()
+assert (repo / '.agents/skills/android-harness/references/android-competency-matrix.md').is_file()
 assert (repo / 'AGENTS.md').is_file()
 print(kit)
 '''

@@ -449,7 +449,7 @@ five_on_tests = {
     },
 }
 five_on_tests_res = run(five_on_tests)
-ok_test_promo_deny = five_on_tests_res["decision"] == "deny" and "Smart Test Promotion" in str(five_on_tests_res.get("reason"))
+ok_test_promo_deny = five_on_tests_res["decision"] == "deny" and "test-quality-reviewer-agent" in str(five_on_tests_res.get("reason"))
 print(f"smart_test_promotion_5_leaf_deny: {five_on_tests_res['decision']} {'OK' if ok_test_promo_deny else 'FAIL ' + json.dumps(five_on_tests_res)}")
 failed += int(not ok_test_promo_deny)
 

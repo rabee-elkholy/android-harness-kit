@@ -67,8 +67,11 @@ def build_header(
     risk_tier: str = "MEDIUM",
     contains_tests: bool = False,
     test_files_count: int = 0,
+    reviewers: list[str] | None = None,
 ) -> list[str]:
     sha = git_head()
+    from _review_contract import LEAF_KEYS
+    reviewers = reviewers if reviewers is not None else LEAF_KEYS + (["test_quality"] if contains_tests else [])
     return [
         HEADER_BEGIN,
         f"TASK_ID={task_id}",
@@ -77,7 +80,8 @@ def build_header(
         f"RISK_TIER={risk_tier}",
         f"CONTAINS_TESTS={'true' if contains_tests else 'false'}",
         f"TEST_FILES_COUNT={test_files_count}",
-        f"REQUIRED_LEAVES={'6' if contains_tests else '5'}",
+        f"REQUIRED_LEAVES={len(reviewers)}",
+        "REQUIRED_REVIEWERS=" + ",".join(reviewers),
         f"GENERATED_AT={datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
     ]
 
@@ -182,6 +186,9 @@ def main(argv=None) -> int:
     skipped_count = max(0, total_changed - len(files_map))
     test_files = [f for f in files_map.keys() if is_test_file(f)]
     contains_tests = len(test_files) > 0
+    from _android_review_scope import review_scope
+    from _snapshot import capture
+    scope = review_scope(REPO, [entry["path"] for entry in capture(REPO)["changes"]])
     print(f"[*] Packaging review diff for {len(files_map)} file(s) (risk tier: {risk_tier})...", flush=True)
     files_json = json.dumps(files_map, ensure_ascii=False, separators=(",", ":"))
     chunks = [
@@ -192,8 +199,10 @@ def main(argv=None) -> int:
                 risk_tier,
                 contains_tests=contains_tests,
                 test_files_count=len(test_files),
+                reviewers=scope["required_reviewers"],
             ),
             f"FILES_SHA256={files_json}",
+            "ANDROID_REVIEW_SCOPE=" + json.dumps(scope, ensure_ascii=False),
             PACKAGE_SHA_PENDING,
         ]) + "\n",
         f"# Harness review package (unstaged vs HEAD)\n# repo: {REPO}\n",
@@ -280,7 +289,8 @@ def main(argv=None) -> int:
         "is_truncated": skipped_count > 0,
         "contains_tests": contains_tests,
         "test_files": test_files,
-        "required_leaves_count": 6 if contains_tests else 5,
+        "required_leaves_count": len(scope["required_reviewers"]),
+        "review_scope": scope,
         "dispatched_at": None,
         "completed_at": None,
         "verdict": "PENDING",
@@ -298,7 +308,7 @@ def main(argv=None) -> int:
             print(f"    - {tf}")
         if len(test_files) > 5:
             print(f"    ... and {len(test_files) - 5} more.")
-        print(f"    [!] Smart Test Promotion ACTIVE: Exactly 6 parallel subagents required (+ test-quality-reviewer-agent -> TEST_PASS).")
+    print("REQUIRED_REVIEWERS=" + ",".join(scope["required_reviewers"]))
     print(f"HARNESS_REVIEW_PACKAGE={out}")
     print(f"HARNESS_PACKAGE_SHA256_12={pkg12}")
     return 0

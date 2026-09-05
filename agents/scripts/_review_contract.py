@@ -16,6 +16,7 @@ LEAF_PASS_VALUES = {
     "perf_guardian": "PERF_PASS",
     "regression_reviewer": "REGRESSION_PASS",
     "test_quality": "TEST_PASS",
+    "ui_expert": "UI_PASS",
 }
 
 LEAF_ALIASES = {
@@ -25,6 +26,7 @@ LEAF_ALIASES = {
     "perf_guardian": ("perf_guardian", "perf-anr-guardian-agent", "perf-anr-guardian", "perf"),
     "regression_reviewer": ("regression_reviewer", "regression-impact-reviewer-agent", "regression-impact-reviewer", "regression"),
     "test_quality": ("test_quality", "test-quality-reviewer-agent", "test-quality-reviewer", "test_quality_reviewer", "test"),
+    "ui_expert": ("ui_expert", "android-ui-expert-agent", "ui"),
 }
 
 
@@ -32,7 +34,8 @@ def required_keys(record: dict) -> list[str]:
     from _snapshot import capture
     from _repo_files import REPO
     changed = capture(REPO)["changes"]
-    return LEAF_KEYS + (["test_quality"] if any(is_test_file(e["path"]) for e in changed) else [])
+    from _android_review_scope import review_scope
+    return review_scope(REPO, [e["path"] for e in changed])["required_reviewers"]
 
 
 def package_valid(record: dict) -> bool:
@@ -52,7 +55,7 @@ def package_valid(record: dict) -> bool:
 def is_test_file(path_str: str) -> bool:
     p = path_str.replace("\\", "/").lower()
     return (
-        "/test/" in p
+        any(part.endswith("test") or part.endswith("tests") for part in p.split("/")[:-1])
         or "/androidtest/" in p
         or "/sharedtest/" in p
         or p.endswith("test.kt")
@@ -60,4 +63,3 @@ def is_test_file(path_str: str) -> bool:
         or p.endswith("test.java")
         or p.endswith("tests.java")
     )
-

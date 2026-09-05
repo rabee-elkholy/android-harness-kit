@@ -116,3 +116,13 @@ CI job performs an actual Room v1-to-v2 migration and preserved-data assertions.
 Its remote result is required before claiming Android integration passed. This is
 one fixture, not evidence of compatibility with every Android/KMP project. Broader
 KMP, product profiles and comparative benchmarks remain follow-up work.
+
+## Android review routing
+
+Package headers include REQUIRED_REVIEWERS and ANDROID_REVIEW_SCOPE with triggering
+paths. Requirements are recomputed from current inputs, not trusted from a mutable
+count in the ledger. Test quality is required for production/build/resource changes
+even without test edits. Detected UI changes require android-ui-expert-agent /
+ui_expert with UI_PASS, recorded with the same structured report contract.
+See the Android competency matrix for semantic scenarios; these remain explicit
+review obligations, not automated proof of runtime coverage.

@@ -61,7 +61,8 @@ class DeliveryTest(unittest.TestCase):
         record = ctx | {'package': {'path': str(package), 'sha256': digest},
                         'tree_fingerprint': ctx['snapshot_id'], 'files': {'Feature.kt': _snapshot.file_digest(self.src, self.repo)},
                         'contains_tests': tests, 'leaves': {}, 'findings': [], 'verdict': 'APPROVED'}
-        for key in LEAF_KEYS + (['test_quality'] if tests else []):
+        from _review_contract import required_keys
+        for key in required_keys(record):
             record['leaves'][key] = {'token': LEAF_PASS_VALUES[key], 'report': {'summary': 'Fixture reviewer report'}}
         _hook_state.write_verdict_record(digest[:12], record)
         _evidence.atomic_json(_hook_state.state_path().with_name('review_ledger.json'),
@@ -82,6 +83,44 @@ class DeliveryTest(unittest.TestCase):
         verdict = self.verdict()
         self.assertEqual('APPROVED', verdict['status'], verdict)
         self.assertTrue(all(c['status'] == 'PASS' for c in verdict['checks']))
+
+    def test_production_change_cannot_approve_without_test_review(self):
+        pkg, record = self.approved_fixture()
+        record['leaves'].pop('test_quality')
+        _hook_state.write_verdict_record(pkg, record)
+        self.assertNotEqual('APPROVED', self.verdict()['status'])
+
+    def test_ui_change_cannot_approve_without_ui_review(self):
+        self.src.write_text('@Composable fun Screen() {}\n')
+        pkg, record = self.approved_fixture()
+        record['leaves'].pop('ui_expert')
+        _hook_state.write_verdict_record(pkg, record)
+        self.assertNotEqual('APPROVED', self.verdict()['status'])
+
+    def test_ui_report_recording_completes_dynamic_roster(self):
+        self.src.write_text('@Composable fun Screen() {}\n')
+        pkg, record = self.approved_fixture()
+        record['leaves'].pop('ui_expert')
+        record['verdict'] = 'PENDING'
+        _hook_state.write_verdict_record(pkg, record)
+        report = {'summary': 'Reviewed state and UI contract',
+                  'package_hash': record['package']['sha256'],
+                  'snapshot_id': record['snapshot_id'], 'reviewed_files': ['Feature.kt'], 'findings': []}
+        self.assertTrue(record_review.record_leaf_verdict(pkg, 'ui_expert', 'UI_PASS', report=report))
+        self.assertEqual('APPROVED', self.verdict()['status'])
+
+    def test_native_hook_uses_same_roster_and_requires_ui_token(self):
+        import pre_tool_safety as safety
+        self.src.write_text('@Composable fun Screen() {}\n')
+        pkg, record = self.approved_fixture()
+        # An edited advisory count must not downgrade the actual requirements.
+        record['required_leaves_count'] = 5
+        _hook_state.write_verdict_record(pkg, record)
+        keys = safety._required_review_keys(pkg)
+        self.assertEqual(7, len(keys))
+        tokens = tuple(LEAF_PASS_VALUES[key] for key in keys)
+        self.assertFalse(safety._tail_has_verdicts(' '.join(tokens[:-1]), required_tokens=tokens))
+        self.assertTrue(safety._tail_has_verdicts(' '.join(tokens), required_tokens=tokens))
 
     def test_missing_gates_block(self):
         self.reviews()
@@ -162,7 +201,9 @@ class DeliveryTest(unittest.TestCase):
 
     def test_test_change_requires_sixth_leaf(self):
         (self.repo / 'FeatureTest.kt').write_text('class FeatureTest\n')
-        self.approved_fixture()
+        pkg, record = self.approved_fixture()
+        record['leaves'].pop('test_quality')
+        _hook_state.write_verdict_record(pkg, record)
         self.assertNotEqual('APPROVED', self.verdict()['status'])
         self.reviews(tests=True)
         self.assertEqual('APPROVED', self.verdict()['status'])

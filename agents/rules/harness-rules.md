@@ -15,6 +15,26 @@ Every subagent must use `model="inherit"`. Never pin `flash`/`pro` to a differen
 
 ---
 
+## Android reviewer routing and competency contract
+
+For installed Android clients, read the applicable rows of
+`skills/android-harness/references/android-competency-matrix.md` under the agents
+folder before implementation. Preserve project-specific architecture and locales.
+Record applicable scenarios, observed evidence and unverified limitations.
+
+The package's `REQUIRED_REVIEWERS` replaces fixed five/six counts in older examples.
+Five base reviewers remain required; production/build/resource changes also require
+`test_quality` (`TEST_PASS`), and detected UI changes require `ui_expert` (`UI_PASS`).
+The recorder, final verdict and native invocation hook enforce the same routing.
+Native invoke supports up to seven reviewers in one call. If the host cannot run
+that many, use its supported review execution with per-leaf structured recording;
+all reports must refer to the same package. Never label serial self-review independent.
+QA diagnostics is on-demand; add specialists when semantic impact exceeds detection.
+
+No fixed assertion quota, mandatory stability annotation, universal Arabic locale,
+or FPS guarantee establishes quality. Concrete contracts and evidence govern findings.
+This section takes precedence over older fixed-count and generic quality examples.
+
 ## Current delivery evidence contract
 
 For schema-v3 delivery, follow `agents/EVIDENCE.md` in the kit or `.agents/EVIDENCE.md` in an installed project.
@@ -277,10 +297,10 @@ From repo root:
    b. `python .agents/scripts/fast_kt_lint.py` (Diff-Scoped Fast Kotlin Lint: catches `!!`, `TODO` stubs, `runBlocking` in tests, inline FQCNs on modified/added lines without penalizing untouched legacy code).
    *Fix any compiler or lint issues BEFORE generating the review package. `review_package.py` strictly validates lint and will refuse package generation on lint violations.*
 1. `python .agents/scripts/review_package.py` (optional paths). Use the printed `HARNESS_REVIEW_PACKAGE=`.
-2. **Smart Test Promotion & Parallel Dispatch**:
-   - **Non-test diff (pure production code)**: Dispatch **all 5** standard review leaves in **exactly one** `invoke_subagent` call with `Subagents: [...]`: `bug-reviewer-agent`, `convention-reviewer-agent`, `security-reviewer-agent`, `perf-anr-guardian-agent`, and `regression-impact-reviewer-agent`.
-   - **Test diff (touches `*Test.kt`, `src/test/`, `src/androidTest/`)**: **`test-quality-reviewer-agent` is automatically promoted to a mandatory 6th reviewer**. Dispatch **all 6** leaves together in **exactly one** `invoke_subagent` call. The test reviewer audits assertion depth ($\ge 2$ meaningful assertions per `@Test`), Coroutines concurrency (`StandardTestDispatcher` with `advanceUntilIdle()` or Turbine), mock isolation, and zero test stubs.
-   - Same package path in every Prompt. `Workspace="inherit"`. Write tools off.
+2. **Risk-based specialist promotion**:
+   - Dispatch every reviewer printed in `REQUIRED_REVIEWERS`, against the same package.
+   - Production changes require test-quality review even without changed tests. Detected UI changes require UI review.
+   - Use meaningful behavioral assertions, deterministic scheduling where needed, and actual project conventions.
 3. **SILENT REVIEW WAIT (Zero Chat Noise)**:
    - When subagents are running in the background, the Lead Agent **MUST REMAIN COMPLETELY SILENT in chat** upon receiving intermediate notifications (e.g. do NOT output *"Waiting for 4 remaining..."* or *"Waiting for 3 remaining..."*).
    - The IDE interface natively displays live progress cards and spinners for each subagent.
@@ -290,7 +310,7 @@ From repo root:
 
 Never fire separate `invoke_subagent` calls. That burns the round counter and is denied.
 
-Optional sixth slot in non-test diffs: `qa-diagnostics-agent` or `android-ui-expert-agent`.
+QA diagnostics remains on-demand; UI review follows the package routing.
 
 ### Environment Adaptability (Antigravity Superpowers vs Portable Parity)
 

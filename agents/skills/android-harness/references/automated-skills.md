@@ -1,3 +1,7 @@
+> Current routing: use every REQUIRED_REVIEWERS entry from review_package.py.
+> Production/build/resource diffs promote test-quality review; detected UI promotes
+> UI review. Fixed five/six examples below describe the base roster only.
+
 # Automated Multi-Agent Architecture & Skills Catalog
 
 Canonical protocol: `.agents/rules/harness-rules.md`. This file does not add policy.

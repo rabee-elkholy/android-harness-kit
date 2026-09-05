@@ -25,37 +25,11 @@ from _live_process import enable_line_buffered_stdio, live_print
 
 enable_line_buffered_stdio()
 
-LEAF_NAME_MAP = {
-    "bug-reviewer-agent": "bug_reviewer",
-    "bug_reviewer": "bug_reviewer",
-    "bug": "bug_reviewer",
-    "convention-reviewer-agent": "convention_reviewer",
-    "convention_reviewer": "convention_reviewer",
-    "convention": "convention_reviewer",
-    "security-reviewer-agent": "security_reviewer",
-    "security_reviewer": "security_reviewer",
-    "security": "security_reviewer",
-    "perf-anr-guardian-agent": "perf_guardian",
-    "perf_guardian": "perf_guardian",
-    "perf_anr_guardian": "perf_guardian",
-    "perf": "perf_guardian",
-    "regression-impact-reviewer-agent": "regression_reviewer",
-    "regression_reviewer": "regression_reviewer",
-    "regression_impact": "regression_reviewer",
-    "regression": "regression_reviewer",
-    "test-quality-reviewer-agent": "test_quality",
-    "test_quality": "test_quality",
-    "test": "test_quality",
-}
+from _review_contract import LEAF_ALIASES, LEAF_PASS_VALUES
 
-PASS_TOKENS = {
-    "bug_reviewer": "BUG_PASS",
-    "convention_reviewer": "CONVENTION_PASS",
-    "security_reviewer": "SECURITY_PASS",
-    "perf_guardian": "PERF_PASS",
-    "regression_reviewer": "REGRESSION_PASS",
-    "test_quality": "TEST_PASS",
-}
+LEAF_NAME_MAP = {alias: key for key, aliases in LEAF_ALIASES.items() for alias in aliases}
+LEAF_NAME_MAP.update(perf_anr_guardian="perf_guardian", regression_impact="regression_reviewer")
+PASS_TOKENS = LEAF_PASS_VALUES
 
 
 def get_latest_pkg12() -> str | None:

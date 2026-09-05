@@ -337,8 +337,8 @@ def handle_invoke_subagent(payload: dict, args: dict) -> None:
     if not subs or not isinstance(subs, list):
         deny("Denied: Subagents must be a non-empty list.")
         return
-    if len(subs) > 6:
-        deny("Denied: maximum 6 subagents allowed per invoke (5 review leaves + one optional specialist).")
+    if len(subs) > 7:
+        deny("Denied: maximum 7 subagents allowed per invoke (5 base reviewers + test and UI specialists).")
         return
 
     conv = conversation_id(payload)
@@ -385,7 +385,7 @@ def handle_invoke_subagent(payload: dict, args: dict) -> None:
     if review_names and not solo_perf:
         package_paths: list[Path] = []
         for sub, _name, _kind in identified:
-            if _name not in (REVIEW_FIVE | {"test-quality-reviewer-agent"}):
+            if _name not in (REVIEW_FIVE | {"test-quality-reviewer-agent", "android-ui-expert-agent"}):
                 continue
             path = require_review_package(sub)
             if path is None:
@@ -397,26 +397,13 @@ def handle_invoke_subagent(payload: dict, args: dict) -> None:
             return
         pkg = package_paths[0]
         digest = file_sha256(pkg)
-        from _hook_state import package_contains_tests
-        has_tests = package_contains_tests(str(pkg)) or package_contains_tests(digest[:12])
-        required_leaves = REVIEW_FIVE | ({"test-quality-reviewer-agent"} if has_tests else set())
-
+        from _review_contract import LEAF_ALIASES
+        keys = _required_review_keys(digest[:12], str(pkg))
+        required_leaves = {next(alias for alias in LEAF_ALIASES[key] if alias.endswith("-agent")) for key in keys}
         missing = required_leaves - names
         if missing:
-            if has_tests:
-                deny(
-                    "Denied: this review package contains modified test files (*Test.kt, src/test/). "
-                    "Smart Test Promotion mandates all 6 leaves in ONE invoke_subagent call: "
-                    "bug-reviewer-agent, convention-reviewer-agent, security-reviewer-agent, "
-                    "perf-anr-guardian-agent, regression-impact-reviewer-agent, and test-quality-reviewer-agent "
-                    f"(missing: {', '.join(sorted(missing))})."
-                )
-            else:
-                deny(
-                    "Denied: delivery review must dispatch all 5 leaves in ONE invoke_subagent call "
-                    f"(missing: {', '.join(sorted(missing))}). "
-                    "Do not fire separate invoke_subagent calls."
-                )
+            deny("Denied: dispatch every REQUIRED_REVIEWERS entry against the same package "
+                 f"in one native invoke (missing: {', '.join(sorted(missing))}).")
             return
 
         if package_already_reviewed(conv, digest):
@@ -434,10 +421,7 @@ def handle_invoke_subagent(payload: dict, args: dict) -> None:
             )
             return
         record_review_round(conv, digest)
-        if has_tests:
-            allow("Smart Test Promotion: 6-leaf parallel review (+ test-quality-reviewer-agent) accepted.")
-        else:
-            allow("5-leaf parallel review accepted.")
+        allow(f"{len(required_leaves)}-leaf parallel review accepted.")
         return
 
     if solo_perf:
@@ -482,7 +466,8 @@ CONV_ID_RE = re.compile(
 )
 SENDER_RE = re.compile(r"sender=([0-9a-fA-F-]{8,}(?:/task-\d+)?)")
 STANDARD_PASS_TOKENS = ("BUG_PASS", "CONVENTION_PASS", "SECURITY_PASS", "PERF_PASS", "REGRESSION_PASS")
-ALL_PASS_TOKENS = ("BUG_PASS", "CONVENTION_PASS", "SECURITY_PASS", "PERF_PASS", "REGRESSION_PASS", "TEST_PASS")
+from _review_contract import LEAF_PASS_VALUES
+ALL_PASS_TOKENS = tuple(LEAF_PASS_VALUES.values())
 PASS_TOKENS = ALL_PASS_TOKENS
 EVIDENCE_RE = re.compile(r"EVIDENCE\s+pkg=([0-9a-fA-F]{12})\s+cites=(\d+)\b")
 
@@ -518,7 +503,7 @@ def _record_verdict(
         for chunk in chunks or []:
             for token in ALL_PASS_TOKENS:
                 if token in chunk:
-                    leaf = "test_quality" if token == "TEST_PASS" else token.split("_")[0].lower()
+                    leaf = next(key for key, value in LEAF_PASS_VALUES.items() if value == token)
                     evidence = EVIDENCE_RE.search(chunk)
                     leaves.setdefault(
                         leaf,
@@ -650,12 +635,22 @@ def _read_transcript_lines(path: Path) -> list[dict]:
     return entries
 
 
-def _tail_has_verdicts(text: str, has_tests: bool = False) -> bool:
-    tokens = ALL_PASS_TOKENS if has_tests else STANDARD_PASS_TOKENS
-    req_count = 6 if has_tests else 5
+def _tail_has_verdicts(text: str, has_tests: bool = False, required_tokens=None) -> bool:
+    tokens = required_tokens if required_tokens is not None else STANDARD_PASS_TOKENS + (("TEST_PASS",) if has_tests else ())
+    req_count = len(tokens)
     if all(token in text for token in tokens):
         return True
     return text.count("Findings") >= req_count
+
+
+def _required_review_keys(pkg12: str, package_path: str = "") -> list[str]:
+    from _review_contract import LEAF_KEYS, required_keys
+    from _hook_state import package_contains_tests
+    record = read_verdict_record(pkg12) or {}
+    if record.get("schema_version") == 3:
+        return required_keys(record)
+    # Legacy transcript support cannot establish schema-v3 final approval.
+    return LEAF_KEYS + (["test_quality"] if package_contains_tests(pkg12) or (package_path and package_contains_tests(package_path)) else [])
 
 
 def check_subagents_barrier(conv_id: str, payload: dict | None = None) -> tuple[bool, str]:
@@ -666,11 +661,12 @@ def check_subagents_barrier(conv_id: str, payload: dict | None = None) -> tuple[
 
     evidence_mode = _evidence_mode()
     active_pkg12 = active_package_hash(conv_id)[:12]
-    from _hook_state import package_contains_tests
-    has_tests = package_contains_tests(active_pkg12)
-    expected_leaves = 6 if has_tests else 5
-    req_tokens = ALL_PASS_TOKENS if has_tests else STANDARD_PASS_TOKENS
-    round_label = "6-leaf (Smart Test Promotion)" if has_tests else "5-leaf"
+    keys = _required_review_keys(active_pkg12)
+    has_tests = "test_quality" in keys
+    expected_leaves = len(keys)
+    req_tokens = tuple(LEAF_PASS_VALUES[key] for key in keys)
+    round_label = f"{expected_leaves}-leaf"
+
 
     if evidence_mode == "strict" and not active_pkg12:
         return False, (
@@ -727,14 +723,14 @@ def check_subagents_barrier(conv_id: str, payload: dict | None = None) -> tuple[
 
     if last_invoke_idx == -1:
         whole = "\n".join(_entry_blob(entry) for entry in lines)
-        if _tail_has_verdicts(whole, has_tests) and not strict_shortfall([whole]):
+        if _tail_has_verdicts(whole, has_tests, req_tokens) and not strict_shortfall([whole]):
             clear_pending_reviews(conv_id)
             _record_verdict(
                 conv_id, active_pkg12, "PASS",
                 "Review verdicts found in transcript (invoke record missing).", [whole],
             )
             return True, "Review verdicts found in transcript (invoke record missing)."
-        if evidence_mode == "strict" and _tail_has_verdicts(whole, has_tests):
+        if evidence_mode == "strict" and _tail_has_verdicts(whole, has_tests, req_tokens):
             missing = _evidenced_verdict_count([whole], active_pkg12, req_tokens)
             _record_verdict(
                 conv_id, active_pkg12, "FAIL",
@@ -791,11 +787,11 @@ def check_subagents_barrier(conv_id: str, payload: dict | None = None) -> tuple[
         )
 
     chunks = [str(entry.get("content") or "") + _entry_blob(entry) for entry in after_entries]
-    if _tail_has_verdicts(after, has_tests) and not strict_shortfall(chunks):
+    if _tail_has_verdicts(after, has_tests, req_tokens) and not strict_shortfall(chunks):
         clear_pending_reviews(conv_id)
         _record_verdict(conv_id, active_pkg12, "PASS", "All subagents completed.", chunks)
         return True, "All subagents completed."
-    if evidence_mode == "strict" and _tail_has_verdicts(after, has_tests):
+    if evidence_mode == "strict" and _tail_has_verdicts(after, has_tests, req_tokens):
         evidenced = _evidenced_verdict_count(chunks, active_pkg12, req_tokens)
         _record_verdict(
             conv_id, active_pkg12, "FAIL",

@@ -1,6 +1,6 @@
 # Test Quality & Assertion Depth Guidelines
 
-This reference defines the quality standards enforced by `test-quality-reviewer-agent` when auditing unit and UI tests (`*Test.kt`).
+This reference defines the quality standards enforced by `test-quality-reviewer-agent` when auditing changed behavior and its unit/UI tests, including missing tests and KMP source sets.
 
 ---
 
@@ -20,12 +20,12 @@ This reference defines the quality standards enforced by `test-quality-reviewer-
 ## 2. Kotlin Coroutines & Flow Testing
 
 1. **`runTest` & TestDispatchers**:
-   - Always wrap coroutine tests in `runTest` from `kotlinx-coroutines-test`.
+   - Use `runTest` for coroutine unit tests requiring controlled scheduling or virtual time; match integration tests to their runtime.
    - Inject `StandardTestDispatcher` or `UnconfinedTestDispatcher` into ViewModels, UseCases, and Repositories rather than hardcoding `Dispatchers.IO` or `Dispatchers.Default`.
-   - Use `advanceUntilIdle()` or `runCurrent()` to deterministically process pending coroutine queues.
+   - Advance pending work when needed; do not require scheduler advancement for tests that already observe their result deterministically.
 
 2. **Testing Reactive Streams with Turbine**:
-   - Use the `Turbine` library (`flow.test { ... }`) to verify emissions in order:
+   - Turbine (`flow.test { ... }`) is one option for verifying emissions; equivalent deterministic collectors are valid:
      ```kotlin
      viewModel.uiState.test {
          assertEquals(DashboardUiState.Loading, awaitItem())

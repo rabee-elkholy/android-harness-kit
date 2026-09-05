@@ -7,6 +7,10 @@ description: Use when working on this Android app architecture, Compose or XML U
 
 Setup fills product-specific references. Do not cite a stub file as if this app shipped that domain.
 
+## Lead agent investigation
+
+Before implementing Android behavior, use the [competency matrix](./references/android-competency-matrix.md) to select relevant risks, owners and verification evidence. Read only applicable rows and project references. Expertise is supported by evidence, never by a role title or PASS count.
+
 ## References
 
 - [**Architecture & Patterns**](./references/architecture-guidelines.md): match this checkout's DI, navigation, and ViewModel base.
