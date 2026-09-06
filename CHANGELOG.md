@@ -5,6 +5,24 @@ All notable changes to the **Android Agent Harness** will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.1] - 2026-09-06
+
+### Sequential Device Verification, Dynamic Chat Localization & Bidi Text Hygiene
+- **Sequential Step-by-Step Device Verification (`AGENTS.md`, `harness-rules.md`, `deliver.md`, `AGENTS.md.template`)**:
+  - Decomposed manual physical device verification into focused, diff-grounded numbered steps (flexible: 2 to 3 steps, or up to 4-5 if spanning multiple screens).
+  - Enforced one-by-one verification: triggers `ask_question` individually per step; proceeds to the next step only upon `PASS`.
+  - On `FAIL`, immediately halts verification, captures write-in explanation, runs `logcat_doctor.py` on crashes/exceptions, and triggers defect repair.
+- **Anti-Empty-Modal & In-Modal Embedding**:
+  - Mandated that the modal question text explicitly embed the step index, target screen, specific action, and expected outcome (preventing disconnected or empty prompts).
+- **Dynamic Conversation Language Matching**:
+  - Strictly enforced that all interactive modal question prompts and selectable options match the active conversation language used by the developer in the chat.
+- **Deduplicated Device Install Execution**:
+  - Standardized strictly one installation run (`run_device.py install-start`), preventing redundant parallel or duplicate adb install calls.
+- **Technical Terms Bidi Hygiene**:
+  - Mandated enclosing technical terms (`APK`, `ADB`, `USB`, file paths, commands) in code backticks to eliminate bidirectional text scrambling in RTL languages.
+- **Documentation & README Alignment (`README.md`)**:
+  - Updated README to reflect Schema-v3 contract, dynamic reviewer routing, bounded review batches, and APK SHA-256 evidence binding.
+
 ## [0.28.0] - 2026-09-06
 
 ### Delivery Evidence Integrity, Additive Reviewer Routing & Review Resilience
@@ -182,7 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local Privacy for Temporary Setup JSON Files (`install_or_update.py`)**:
   - Automatically added temporary setup dump and input files to local `.git/info/exclude` to guarantee zero working-tree pollution.
 
-## [0.27.2] - 2026-09-02
+### 0.27.2 - 2026-09-02
 
 ### Anti-Dummy Maestro Gate, APK Freshness Parity & Final Verdict Hardening
 - **Anti-Dummy Maestro Gate & Assertion Floor (`_maestro_core.py`, `run_e2e_qa.py`, `_maestro_selftest.py`)**:
