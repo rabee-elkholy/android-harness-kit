@@ -185,7 +185,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local Privacy for Temporary Setup JSON Files (`install_or_update.py`)**:
   - Automatically added temporary setup dump and input files to local `.git/info/exclude` to guarantee zero working-tree pollution.
 
-## [0.27.2] - 2026-09-02
+### 0.27.2 - 2026-09-02
 
 ### Anti-Dummy Maestro Gate, APK Freshness Parity & Final Verdict Hardening
 - **Anti-Dummy Maestro Gate & Assertion Floor (`_maestro_core.py`, `run_e2e_qa.py`, `_maestro_selftest.py`)**:
