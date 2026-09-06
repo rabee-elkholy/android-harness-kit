@@ -5,6 +5,13 @@ All notable changes to the **Android Agent Harness** will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.3] - 2026-09-06
+
+### Codex Adapter Local Privacy & Zero Git Pollution Hardening
+- **Automated Local Exclusion for Codex Prompts (`install_or_update.py`, `_repo_files.py`, `setup-prompt.md`)**:
+  - Added `.codex/` to `enforce_git_privacy()` and `HARNESS_LOCAL_EXCLUSIONS` in `.git/info/exclude`.
+  - Guarantees that generated prompt files (`.codex/prompts/*.md`) never appear as unversioned/untracked files in Android Studio Git changes or pollute shared team branches.
+
 ## [0.28.2] - 2026-09-06
 
 ### Interactive Architecture Graph Viewer & Install Message Fix
@@ -187,7 +194,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Environment Doctor Hardening (`doctor/engine.py`, `harness_doctor.py`)**:
   - Added proactive checks for Java JDK runtime (validating JDK 17+ requirement for AGP 8+) and ADB CLI availability in system PATH to Dimension 1.
 
-## [0.27.4] - 2026-09-02
+### 0.27.4 - 2026-09-02
 
 ### Complete E2E/Maestro Machinery Purge & Interactive Manual Checklist Mode
 - **Complete E2E/Maestro Engine Purge (`_maestro_core.py`, `run_e2e_qa.py`, `run_e2e_smoke.py`, `qa-e2e-planner-agent`)**:

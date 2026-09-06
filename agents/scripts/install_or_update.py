@@ -423,6 +423,7 @@ def enforce_git_privacy(repo: Path) -> None:
         ".windsurf/",
         ".windsurfrules",
         ".claude/",
+        ".codex/",
         ".clinerules",
         ".amazonq/",
         ".continue/",

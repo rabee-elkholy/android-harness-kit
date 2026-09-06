@@ -1,6 +1,6 @@
 # Setup prompt
 
-> **Raw Prompt URL**: `https://raw.githubusercontent.com/rabee-elkholy/android-agent-harness/v0.28.2/docs/setup-prompt.md`  
+> **Raw Prompt URL**: `https://raw.githubusercontent.com/rabee-elkholy/android-agent-harness/v0.28.3/docs/setup-prompt.md`  
 > **Kit Repository**: `https://github.com/rabee-elkholy/android-agent-harness.git`
 
 The installing agent **executes** this file (usually after the developer pasted [`install-or-update-prompt.md`](install-or-update-prompt.md) in a new chat on the Android app). Do not summarize it. Replacing the example app name alone is **not** a successful install.
@@ -53,7 +53,7 @@ If `"backup"` is true or unset (default): Timestamp `YYYYMMDD-HHMMSS`. Prune any
 
 ## 1) Place the engine
 
-Copy kit `agents/` → `.agents/`. Empty `state/`. `.agents/.gitignore` = `state/` + `cache/` + `__pycache__/` + `scripts/__pycache__/` + `mcp/*/__pycache__/` + `mcp/zoho_sprints/zoho_config.json` + `*zoho*token*` + `*.secret`. Automatically register all harness directories and local AI manifests (`.agents/`, `.harness-setup/`, `.harness-backup/`, `.harness-backups/`, `.githooks/`, `AGENTS.md`, `GEMINI.md`, `CLAUDE.md`, `CODEX.md`, `QWEN.md`, `.cursor/`, `.cursorrules`, `.windsurf/`, `.windsurfrules`, `.claude/`, `.clinerules`, `.amazonq/`, `.continue/`, `.junie/`, `.kilocode/`, `.roo/`, `.goosehints`, `*.diff`, `*.patch`) in `<repo>/.git/info/exclude` (and ensure shared `.gitignore` has strictly zero harness lines) so **strictly ZERO harness or AI files ever appear in Android Studio Git or pollute shared team branches**. Transient helper scripts must execute in memory (`python -c`) or be unlinked immediately so zero unversioned files remain. Leave kit `mcp_config.json` empty until **I.16** is applied by `install_zoho_mcp.py`. Never copy a Zoho token file into the repo.
+Copy kit `agents/` → `.agents/`. Empty `state/`. `.agents/.gitignore` = `state/` + `cache/` + `__pycache__/` + `scripts/__pycache__/` + `mcp/*/__pycache__/` + `mcp/zoho_sprints/zoho_config.json` + `*zoho*token*` + `*.secret`. Automatically register all harness directories and local AI manifests (`.agents/`, `.harness-setup/`, `.harness-backup/`, `.harness-backups/`, `.githooks/`, `AGENTS.md`, `GEMINI.md`, `CLAUDE.md`, `CODEX.md`, `QWEN.md`, `.cursor/`, `.cursorrules`, `.windsurf/`, `.windsurfrules`, `.claude/`, `.codex/`, `.clinerules`, `.amazonq/`, `.continue/`, `.junie/`, `.kilocode/`, `.roo/`, `.goosehints`, `*.diff`, `*.patch`) in `<repo>/.git/info/exclude` (and ensure shared `.gitignore` has strictly zero harness lines) so **strictly ZERO harness or AI files ever appear in Android Studio Git or pollute shared team branches**. Transient helper scripts must execute in memory (`python -c`) or be unlinked immediately so zero unversioned files remain. Leave kit `mcp_config.json` empty until **I.16** is applied by `install_zoho_mcp.py`. Never copy a Zoho token file into the repo.
 
 ## 2) Discover from disk (do not invent)
 
@@ -272,6 +272,6 @@ Follow **I.12** from answers: merge script grants only when `gemini_config` is `
 - **Local Hooks Privacy**: Note that `.githooks/` is automatically registered in `.git/info/exclude` to keep pre-commit gates local to this developer without dirtying shared team repositories.
 - **New Session**: Tell them to start a **new chat** on this Android folder before starting daily work.
 - **Diagnostics & Rollback**:
-  - To run system diagnostics at any time: Run `python .agents/scripts/harness_doctor.py` or execute `https://raw.githubusercontent.com/rabee-elkholy/android-agent-harness/v0.28.2/docs/diagnostic-prompt.md`.
-  - For rollback: Execute `.harness-backup/<timestamp>/rollback-prompt.md` or `https://raw.githubusercontent.com/rabee-elkholy/android-agent-harness/v0.28.2/docs/rollback-prompt.md`.
+  - To run system diagnostics at any time: Run `python .agents/scripts/harness_doctor.py` or execute `https://raw.githubusercontent.com/rabee-elkholy/android-agent-harness/v0.28.3/docs/diagnostic-prompt.md`.
+  - For rollback: Execute `.harness-backup/<timestamp>/rollback-prompt.md` or `https://raw.githubusercontent.com/rabee-elkholy/android-agent-harness/v0.28.3/docs/rollback-prompt.md`.
   - Remember: Five `*_PASS` required before real feature/bug delivery.

@@ -93,6 +93,7 @@ HARNESS_LOCAL_EXCLUSIONS = [
     ".windsurf/",
     ".windsurfrules",
     ".claude/",
+    ".codex/",
     ".clinerules",
     ".amazonq/",
     ".continue/",
