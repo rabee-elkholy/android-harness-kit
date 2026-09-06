@@ -576,8 +576,11 @@ def sync_code_graph(repo: Path) -> dict:
         dot_file.write_text(dot_str, encoding="utf-8")
 
         svg_file = repo / ".agents" / "cache" / "graph.svg"
-        print("      -> Rendering visual graph artifact (DOT/SVG)...", flush=True)
         render_ok, _ = render_dot_to_image(dot_str, svg_file, img_format="svg")
+        if render_ok:
+            print("      -> Rendered visual graph artifact (DOT/SVG).", flush=True)
+        else:
+            print("      -> DOT graph cached (install Graphviz for SVG rendering, or use `project_graph.py --ui`).", flush=True)
 
         return {
             "success": True,

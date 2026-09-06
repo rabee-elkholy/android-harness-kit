@@ -5,6 +5,16 @@ All notable changes to the **Android Agent Harness** will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.2] - 2026-09-06
+
+### Interactive Architecture Graph Viewer & Install Message Fix
+- **Interactive Architecture & Code Graph Viewer (`render_ui.py`, `project_graph.py`)**:
+  - Added `build_graph_viewer_html()` and `render_graph_viewer()` to `render_ui.py`: self-contained interactive HTML Canvas graph viewer with force-directed layout, color-coded EntityType nodes, search, layer filters, pan/zoom, node dragging, hover tooltips, and large-graph performance optimizations (>500 nodes auto-samples architectural layers).
+  - Added `--ui` flag to `project_graph.py` for generating the interactive viewer artifact (combinable with `--feature`, `--find`, `--screen`, `--module` for scoped subgraphs).
+  - Added `--graph` CLI option to `render_ui.py` for direct graph viewer generation from cached `project_graph.json`.
+- **Accurate Install/Update Graph Status Message (`install_or_update.py`)**:
+  - Replaced always-shown "Rendering visual graph artifact (DOT/SVG)..." with conditional messaging: shows success when Graphviz `dot` is available, otherwise directs to `project_graph.py --ui` as the self-contained alternative.
+
 ## [0.28.1] - 2026-09-06
 
 ### Sequential Device Verification, Dynamic Chat Localization & Bidi Text Hygiene
@@ -189,7 +199,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Universal Code Graph & Selftest Alignment**:
   - Updated codebase graph engine, wizards, and selftest suites to pass 100% cleanly with zero warnings and zero failures.
 
-## [0.27.3] - 2026-09-02
+### 0.27.3 - 2026-09-02
 
 ### Application ID Resolution, PM Tracker Jargon Elimination & Local Privacy
 - **Application ID & Launcher Package Discovery (`install_or_update.py`)**:

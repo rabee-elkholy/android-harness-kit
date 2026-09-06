@@ -67,6 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output", metavar="PATH", help="Write output to a specified file")
     parser.add_argument("--sync", action="store_true", help="Force full cache resynchronization")
     parser.add_argument("--stats", action="store_true", help="Display graph cache statistics")
+    parser.add_argument("--ui", action="store_true", help="Generate interactive HTML graph viewer artifact")
     return parser.parse_args(argv)
 
 
@@ -208,6 +209,19 @@ def main(argv: list[str] | None = None) -> int:
         for me in mod_edges:
             sub_g.add_edge(me.source, me.target, kind=me.kind)
         graph_to_render = sub_g
+
+    if args.ui:
+        from render_ui import render_graph_viewer
+        graph_data = graph_to_render.to_dict()
+        output_file = Path(args.output) if args.output else None
+        result = render_graph_viewer(
+            graph_data=graph_data,
+            title=f"{REPO.name} Code Graph",
+            stats={"total_nodes": len(graph_to_render.nodes), "total_edges": len(graph_to_render.edges)},
+            output_path=output_file,
+        )
+        live_print(f"[*] Interactive Graph Viewer: {result}")
+        return 0
 
     # Format output
     output_text = ""
