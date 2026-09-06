@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
 
         live_print(f"[*] Found {len(matches)} component(s) matching '{args.find}':")
         for m in matches[:10]:
-            live_print(engine.graph.format_symbol_match(m))
+            live_print(engine.graph.format_symbol_match(m, query=args.find))
 
         if len(matches) == 1:
             focus_node_id = matches[0].id

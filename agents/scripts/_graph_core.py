@@ -217,6 +217,9 @@ DECLARATION_PATTERN = re.compile(
 )
 NAMED_OBJECT_PATTERN = re.compile(r"\bobject\s+([a-zA-Z0-9_]+)\b")
 COMPOSABLE_FUNC_PATTERN = re.compile(r"@Composable\s+(?:(?:public|private|internal)\s+)?fun\s+([a-zA-Z0-9_]+)\s*\(")
+FUNCTION_PATTERN = re.compile(r"\b(?:fun|suspend\s+fun)\s+([a-zA-Z0-9_]+)\s*\(")
+JAVA_METHOD_PATTERN = re.compile(r"(?:public|protected|private|static|\s)+[\w<>\[\],\s]+\s+([a-zA-Z0-9_]+)\s*\([^)]*\)\s*(?:throws\s+[\w,\s]+)?\s*\{")
+PYTHON_FUNC_PATTERN = re.compile(r"^\s*def\s+([a-zA-Z0-9_]+)\s*\(", re.MULTILINE)
 EXTENDS_PATTERN = re.compile(r"\b(?:class|interface)\s+[a-zA-Z0-9_]+\s*(?:\([^)]*\))?\s*:\s*([a-zA-Z0-9_,\s<>]+)")
 JAVA_EXTENDS_PATTERN = re.compile(r"\bclass\s+[a-zA-Z0-9_]+\s+extends\s+([a-zA-Z0-9_]+)")
 JAVA_IMPLEMENTS_PATTERN = re.compile(r"\bclass\s+[a-zA-Z0-9_]+\s+implements\s+([a-zA-Z0-9_,\s]+)")
@@ -227,6 +230,13 @@ XML_FRAGMENT_CLASS_PATTERN = re.compile(r'(?:android:name|class)="([a-zA-Z0-9_.]
 GRADLE_INCLUDE_PATTERN = re.compile(r'''include\s*\(?\s*['":]([a-zA-Z0-9_:\-./]+)['"]?\s*\)?''')
 GRADLE_PROJECT_DEP_PATTERN = re.compile(r'''(?:implementation|api|compileOnly|runtimeOnly|testImplementation|androidTestImplementation)\s*\(?\s*project\s*\(?\s*['"](:[a-zA-Z0-9_:\-]+)['"]\s*\)\s*\)?''')
 GRADLE_TYPE_SAFE_DEP_PATTERN = re.compile(r'''(?:implementation|api|compileOnly|runtimeOnly)\s*\(?\s*projects\.([a-zA-Z0-9_.]+)\s*\)?''')
+
+# Common boilerplate / lifecycle / framework functions to skip in declaration indexing
+IGNORED_FUNCTION_NAMES = {
+    "equals", "hashcode", "tostring", "clone", "copy", "get", "set", "invoke", "call", "run",
+    "main", "init", "oncreate", "ondestroy", "onstart", "onstop", "onpause", "onresume",
+    "onviewcreated", "onattach", "ondetach", "apply", "let", "also", "with", "takeif", "takeunless"
+}
 
 
 class DependencyGraph:
@@ -333,7 +343,7 @@ class DependencyGraph:
         results = exact_matches + name_matches + path_matches
         return results[:limit]
 
-    def format_symbol_match(self, node: GraphNode) -> str:
+    def format_symbol_match(self, node: GraphNode, query: str = "") -> str:
         """Formats a single matching node with explicit language, path, and layer."""
         lines = []
         lang = node.metadata.get("language", "")
@@ -375,6 +385,16 @@ class DependencyGraph:
             targets = [self.nodes[t].name for t in self.get_targets(node.id) if t in self.nodes]
             if targets:
                 lines.append(f"    Dependencies: {', '.join(targets[:6])}")
+
+        if query:
+            q_lower = query.lower().strip()
+            matched_decls = [
+                d for d in node.declarations
+                if q_lower in d.lower() and d.lower() != node.name.lower()
+            ]
+            if matched_decls:
+                lines.append(f"    Matched Member/Function: {', '.join(matched_decls[:6])}")
+
         return "\n".join(lines)
 
     def to_harness_inventory(self) -> str:
@@ -852,6 +872,24 @@ def parse_code_file(path: Path, repo: Path) -> list[GraphNode]:
         if obj_name.lower() not in KOTLIN_RESERVED_DECLARATIONS:
             raw_decls.append(obj_name)
 
+    is_java = path.suffix.lower() == ".java"
+    lang = "Java" if is_java else "Kotlin"
+
+    # Extract member and top-level functions (Kotlin & Java)
+    raw_funcs = [m.group(1).strip() for m in FUNCTION_PATTERN.finditer(clean_text)]
+    if is_java:
+        raw_funcs.extend([m.group(1).strip() for m in JAVA_METHOD_PATTERN.finditer(clean_text)])
+
+    for fn in raw_funcs:
+        fn_lower = fn.lower()
+        if (
+            fn_lower not in KOTLIN_RESERVED_DECLARATIONS
+            and fn_lower not in IGNORED_FUNCTION_NAMES
+            and not fn.startswith("_")
+            and len(fn) > 2
+        ):
+            raw_decls.append(fn)
+
     declarations = [
         d for d in raw_decls
         if d.lower() not in KOTLIN_RESERVED_DECLARATIONS and not d.startswith("_") and len(d) > 1
@@ -864,9 +902,6 @@ def parse_code_file(path: Path, repo: Path) -> list[GraphNode]:
 
     nodes: list[GraphNode] = []
 
-    is_java = path.suffix.lower() == ".java"
-    lang = "Java" if is_java else "Kotlin"
-
     for fn in composable_funcs:
         if fn.endswith("Screen") or fn.endswith("View") or fn.endswith("Dialog") or fn.endswith("BottomSheet"):
             node_id = f"{pkg}.{fn}" if pkg else fn
@@ -878,13 +913,15 @@ def parse_code_file(path: Path, repo: Path) -> list[GraphNode]:
                     file_path=rel_path,
                     module=module_id,
                     package=pkg,
-                    declarations=[fn],
+                    declarations=[fn] + [f for f in declarations if f != fn],
                     imports=imports,
                     metadata={"composable": True, "language": lang},
                 )
             )
 
     for decl in declarations:
+        if decl in [d for d in raw_funcs if d not in [m.group(1).strip() for m in DECLARATION_PATTERN.finditer(clean_text)]]:
+            continue  # Don't create separate top-level node for functions, they are indexed within class/file declarations
         node_id = f"{pkg}.{decl}" if pkg else decl
         etype = classify_entity_type(decl, rel_path, declarations, raw_text)
         nodes.append(
@@ -977,10 +1014,15 @@ def parse_harness_script(path: Path, repo: Path) -> GraphNode | None:
         usage_lines = [l for l in doc_lines if "python " in l or l.startswith("Usage:")]
         usage = "\n".join(usage_lines) if usage_lines else f"python {rel_path}"
         flags = re.findall(r"(--[a-zA-Z0-9_\-]+)", text)
+        py_funcs = [
+            m.group(1).strip() for m in PYTHON_FUNC_PATTERN.finditer(text)
+            if not m.group(1).startswith("_") and len(m.group(1)) > 2
+        ]
     except Exception:
         title = path.name
         usage = f"python {rel_path}"
         flags = []
+        py_funcs = []
 
     return GraphNode(
         id=f"harness:{path.name}",
@@ -988,7 +1030,7 @@ def parse_harness_script(path: Path, repo: Path) -> GraphNode | None:
         type=EntityType.HARNESS_TOOL.value,
         file_path=rel_path,
         module=":harness",
-        declarations=[path.stem, path.name],
+        declarations=[path.stem, path.name] + py_funcs,
         metadata={
             "description": title,
             "usage": usage,
@@ -1133,12 +1175,18 @@ class GraphEngine:
         extensions = {".kt", ".java", ".xml", ".gradle", ".kts"}
         current_files: dict[str, Path] = {}
 
-        for p in self.repo.glob("**/*"):
-            if p.is_file() and p.suffix.lower() in extensions:
-                rel = p.relative_to(self.repo).as_posix()
-                if any(part in (".git", "build", ".gradle", ".agents", ".harness-backup", "node_modules") for part in p.parts):
-                    continue
-                current_files[rel] = p
+        ignored_dir_names = {".git", "build", ".gradle", ".agents", ".harness-backup", "node_modules", ".idea"}
+        for root, dirs, files in os.walk(self.repo):
+            dirs[:] = [d for d in dirs if d not in ignored_dir_names]
+            for f in files:
+                ext = Path(f).suffix.lower()
+                if ext in extensions:
+                    fp = Path(root) / f
+                    try:
+                        rel = fp.relative_to(self.repo).as_posix()
+                        current_files[rel] = fp
+                    except ValueError:
+                        pass
 
         # Discover Harness infrastructure (.agents in target project or agents in kit repo)
         harness_roots: list[Path] = []

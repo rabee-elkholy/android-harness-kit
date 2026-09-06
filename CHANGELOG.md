@@ -5,6 +5,24 @@ All notable changes to the **Android Agent Harness** will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.14] - 2026-09-06
+
+### Code Graph Function Indexing, Reality-Check Protocol & Anti-Paralysis Exploration Barriers
+- **Code Graph Function & Method Indexing (`_graph_core.py`, `project_graph.py`)**:
+  - Upgraded code graph engine to extract and index member and top-level functions in Kotlin, Java, and Python.
+  - Added `Matched Member/Function:` reporting in `format_symbol_match` for precise function location via `project_graph.py --find <symbol>`.
+  - Optimized repository traversal 100x via `os.walk` with instant pruning of `build/`, `.gradle/`, `.git/`, and caches.
+- **Reality-Check & Grounding-First Protocol (`harness-rules.md`, `AGENTS.md`, `AGENTS.md.template`)**:
+  - Enforced mandatory `git status` / `git diff` check at the start of bug triage to prevent the Ghost-Bug trap.
+  - Mandatory stop and `ask_question` trigger when suspect fixes already exist in the working tree, prohibiting speculative OS/framework race-condition theories.
+- **Targeted Grep & Anti-Grep Cascade Invariant (`harness-rules.md`, `AGENTS.md`)**:
+  - Strictly prohibited root-level cascading `grep_search`. Mandatory graph-first discovery for symbols and functions, restricting `grep_search` to single files or feature directories.
+- **Bug Exploration Circuit Breaker & Anti-Archaeology (`harness-rules.md`, `AGENTS.md`)**:
+  - Imposed a hard cap of 3-4 files for bug localization before presenting an implementation plan.
+  - Strictly banned speculative `git log` / commit archaeology and cross-subsystem file manager dives during bug triage.
+- **Pre-Invocation Reminder Synchronization (`pre_invocation_reminder.py`)**:
+  - Injected Reality-Check and Graph-First priorities into Antigravity turn reminders.
+
 ## [0.27.13] - 2026-09-06
 
 ### Client Hook Selftest Dirty-Tree Gate Bypass

@@ -39,6 +39,7 @@ Every subagent must use `model="inherit"`. Never pin `flash`/`pro` to a differen
   3. **Sequential manual device-verification phases**: One phase at a time (`Phase passed` / `Phase failed` / `Retest / I need help`).
 - **Interactive Requirements & Missing-Scenario Interview Invariant ("The Zero-Assumption Barrier")**:
   - The Lead Agent **MUST NEVER guess, invent, or assume business logic, UI error texts, or missing scenarios from its own head**.
+  - **Scope of the Barrier**: This invariant applies strictly to **product logic, business invariants, and unmentioned user-facing edge cases** (network/offline, empty states, caching TTL, error copy). It **DOES NOT MEAN** analyzing the entire Android OS, framework internals, or writing exhaustive theoretical proofs of third-party libraries before presenting a plan. When the business requirement is clear, propose a minimal, clean plan immediately.
   - After graph-first exploration of the relevant code slice and BEFORE authoring `implementation_plan.md`:
     The Lead Agent MUST systematically audit for underspecified edge cases:
     * **Network & Offline States**: What should display when offline? How does retry work? How are raw exceptions mapped to user-facing Arabic/English messages?
@@ -50,6 +51,23 @@ Every subagent must use `model="inherit"`. Never pin `flash`/`pro` to a differen
     The Lead Agent **MUST IMMEDIATELY TRIGGER THE INTERACTIVE `ask_question` MODAL** with structured, clickable options so the developer directly selects their choices.
     **STRICTLY FORBIDDEN**: Never write out missing-case questions as conversational chat text or markdown paragraphs. Never postpone questions to an "Open Questions" section in `implementation_plan.md`. Trigger the `ask_question` modal FIRST, receive the developer's answers, and only then author the agreed-upon plan.
     *(Rule Precedence: This user rule strictly overrides any platform planning mode default that says 'do not use the ask_question tool to ask these questions'.)*
+- **Reality-Check & Grounding-First Protocol (Ghost-Bug Prevention)**:
+  - On diagnosing any reported bug or QA defect:
+    * The Lead Agent **MUST FIRST check `git status` and `git diff` on the target files** to verify whether suspect fixes or lines are already present locally as uncommitted modifications.
+    * **REALITY-CHECK TRIGGER**: If the target fix (e.g. `dismiss()`, `try/catch`, `completeWaterStreak()`, or null checks) is already written in the working tree, the agent is **STRICTLY FORBIDDEN from inventing complex OS race conditions, Coroutine hangs, Compose sheet state anomalies, or dialog queue loops**.
+    * The agent **MUST IMMEDIATELY HALT SPECULATIVE EXPLORATION** and trigger `ask_question`:
+      *"The suspect fix (`...`) already exists in the local code. Was this code already tested on device and failed, or is this an uncommitted/untested local change?"*
+- **Targeted Grep & Anti-Grep Cascade Invariant**:
+  - **Strict Ban on Root Grepping**: The Lead Agent is **STRICTLY FORBIDDEN from launching broad, cascading `grep_search` calls across the entire project root (`SearchPath: root`)** for symbols, function names, or generic keywords (e.g. searching for `dismiss`, `onShare`, `StreakUtils`).
+  - **Graph-First Symbol & Function Discovery**: To locate classes, screens, ViewModels, or functions, ALWAYS query `project_graph.py --find <Symbol>` or `--feature <Name>`.
+  - **Targeted Grep Scope**: `grep_search` is permitted ONLY when scoped to a specific target file (`SearchPath: <file>`) or within a specific feature directory (`SearchPath: app/src/main/java/.../<feature>`) after the relevant component is located via the graph.
+- **Bug Exploration Circuit Breaker & Anti-Archaeology**:
+  - **Bug Localization Cap**: For bug investigations, limit exploratory file inspection to **a maximum of 3-4 files** directly related to the defect slice before drafting `implementation_plan.md`.
+  - **Strict Ban on Git Archaeology**: The agent is **STRICTLY FORBIDDEN from running `git log` or searching old commits to guess developer intent during bug investigation**, unless specifically requested by the developer.
+  - **Ban on Cross-Subsystem Dives**: Do NOT trace secondary utility managers (file storage, analytics, bitmap encoders, sound pools) unless explicitly referenced in a runtime stack trace or logcat error.
+- **5-Leaf Review Demystification**:
+  - The 5-leaf review is a **post-implementation delivery gate** that inspects the *actual unified diff (`HARNESS_REVIEW_PACKAGE`)*, unit test results, and lint.
+  - It is **NOT an excuse for pre-implementation analysis paralysis**. Reviewers evaluate diffs, not intentions; a concise 5-line fix backed by unit tests passes the 5-leaf gate rapidly (Round 1 PASS).
 - **Attached Media & Screenshot First-Turn Invariant**:
   - Whenever the developer provides an attached screenshot, image, or video (`.user_uploaded/` or image path in request metadata):
   - The Lead Agent **MUST view and analyze the media via `view_file` in the VERY FIRST TURN** before reading code or proposing changes. Never ignore user-provided visual evidence.
