@@ -5,6 +5,13 @@ All notable changes to the **Android Agent Harness** will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.13] - 2026-09-06
+
+### Client Hook Selftest Dirty-Tree Gate Bypass
+- **Hook Selftest Review Gate Bypass (`pre_tool_safety.py`)**:
+  - Added `_IN_HOOK_SELFTEST` bypass to assemble and device delivery gates in `pre_tool_safety.py`.
+  - Guarantees that internal hook selftests (such as `run_device_uninstall`) execute cleanly during client repository installations even when uncommitted application code changes exist in the working tree.
+
 ## [0.27.12] - 2026-09-05
 
 ### Environment-Adaptive Architecture, Self-Healing Commands & Zero-Bloat Preference Codification
@@ -176,7 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Application ID & Namespace Fallback Discovery (`wizard/discovery.py`)**:
   - Added `AndroidManifest.xml` package attribute fallback to ensure real package name is always discovered even when missing from Gradle DSL blocks.
 
-## [0.27.0] - 2026-09-02
+### 0.27.0 - 2026-09-02
 
 ### Maestro E2E Engine Integration, Harness Code Graph Indexing & Automated CLI Setup
 - **Harness Infrastructure Code Graph Indexing (`_graph_core.py`, `project_graph.py`)**:
